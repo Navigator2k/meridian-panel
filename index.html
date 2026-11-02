@@ -729,7 +729,16 @@ function drawTac(){
     ['28км','55км','83км','110км'].forEach((l,i)=>{tx.fillText(l,cx2,cy2-(i+1)*(R/4)+9)});
     tx.fillText('0',cx2,cy2-R-5);tx.fillText('180',cx2,cy2+R+13);tx.fillText('90',cx2+R+11,cy2+4);tx.fillText('270',cx2-R-11,cy2+4);
     rAngle+=.015;
-    try{const sg=cx.createConicGradient(rAngle,cx2,cy2);sg.addColorStop(0,'rgba(0,229,255,0.14)');sg.addColorStop(.05,'rgba(0,229,255,0.04)');sg.addColorStop(.1,'transparent');sg.addColorStop(1,'transparent');tx.fillStyle=sg;tx.beginPath();tx.arc(cx2,cy2,R,0,Math.PI*2);tx.fill()}catch(e){}
+    try{
+        // шлейф тянется ЗА лучом: яркий край у самой стрелки, дальше — затухание
+        const sg=cx.createConicGradient(rAngle,cx2,cy2);
+        sg.addColorStop(0,'transparent');
+        sg.addColorStop(0.82,'transparent');
+        sg.addColorStop(0.90,'rgba(0,229,255,0.045)');
+        sg.addColorStop(0.96,'rgba(0,229,255,0.10)');
+        sg.addColorStop(0.995,'rgba(0,229,255,0.16)');
+        tx.fillStyle=sg;tx.beginPath();tx.arc(cx2,cy2,R,0,Math.PI*2);tx.fill();
+    }catch(e){}
     tx.beginPath();tx.moveTo(cx2,cy2);tx.lineTo(cx2+Math.cos(rAngle)*R,cy2+Math.sin(rAngle)*R);tx.strokeStyle='rgba(0,229,255,0.45)';tx.lineWidth=1;tx.stroke();
     uniTick();
     const objs=universeObjects();
