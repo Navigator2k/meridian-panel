@@ -1779,16 +1779,32 @@ const ARC_OXYGEN=[
  {who:'KEP',text:'Запас 3 часа, но команда у нас на 3 дня. Держимся вместе — воздух вернём.'},
  {who:'ZAR',text:'Скруббер {sys} в норме: поток 98%, O₂ в допуске. Смена закрыта без замечаний — дышим.'}
 ];
-function sayChain(list){
-    // короткий обмен: не больше двух реплик, с живыми паузами
+// характер в цифрах: длина цепочки, склонность к офтопу и к эмоциям
+const CREW_STYLE={
+    KEP:{chain:[1,2],off:0.04,emo:0.15},   // сдержан, коротко и по делу
+    ZAR:{chain:[1,2],off:0.06,emo:0.25},   // точная, цифры, без лирики
+    LUS:{chain:[2,3],off:0.38,emo:0.45},   // живая, любит уйти в сторону
+    FIN:{chain:[2,3],off:0.22,emo:0.65},   // как подросток: азарт и эмоции
+    NUR:{chain:[1,2],off:0.08,emo:0.10}    // аналитичный, сухие вероятности
+};
+function chainCount(who,heat){
+    const st=CREW_STYLE[who]||{chain:[1,2]};
+    const base=st.chain[0]+Math.floor(Math.random()*(st.chain[1]-st.chain[0]+1));
+    return Math.max(1,Math.min(3,base+(heat>0.6?1:0)));
+}
+function sayChain(list,count){
+    // сколько реплик — зависит от того, кто начал, и от обстановки
+    const n=Math.max(1,Math.min(list.length,count||chainCount(list[0][0])));
     let ms=400;
-    list.slice(0,2).forEach(pair=>{
+    list.slice(0,n).forEach(pair=>{
         setTimeout(()=>crewSay(pair[0],pair[1]),ms);
         ms+=2600+Math.random()*4200;
     });
 }
 function arcRun(arc,baseMs){
- const steps=arc.slice(0,2);
+ // длина арки плавает: капитан коротко, Финн и Лючия могут разойтись
+ const n=Math.max(1,Math.min(arc.length,chainCount(arc[0].who)));
+ const steps=arc.slice(0,n);
  let ms=300;
  for(const step of steps){
   setTimeout(()=>crewSay(step.who,fillTemplate(step.text)),ms);
@@ -1842,11 +1858,11 @@ function idleConvo(allow){
     const bank=BANTER.filter(b=>ok(b[0]));
     if(!bank.length)return;
     const b=bank[Math.floor(Math.random()*bank.length)];
-    // один короткий обмен (две реплики), а не весь диалог целиком
+    // сколько реплик — по характеру зачинщика (от одной до трёх)
+    const n=Math.min(chainCount(b[0]),Math.floor(b.length/2));
     let at=500;
-    const take=Math.min(2,b.length);
-    for(let i=0;i<take;i+=2){
-        const who=b[i],text=fillTemplate(b[i+1]);
+    for(let i=0;i<n;i++){
+        const who=b[i*2],text=fillTemplate(b[i*2+1]);
         if(text!==undefined){
             setTimeout(()=>crewSay(who,text),at);
             at+=2600+Math.random()*4200;
@@ -4253,7 +4269,17 @@ function localSay(intent,ctx){
     const who=['KEP','ZAR','LUS','FIN','NUR'][Math.floor(Math.random()*5)];
     const list=bank[who]||bank.KEP;
     const i=(sayCursor[intent+who]=(sayCursor[intent+who]||0)+1)%list.length;
-    return [{who,text:list[i].replace(/\{me\}/g,userName||'напарник')}];
+    const out=[{who,text:list[i].replace(/\{me\}/g,userName||'напарник')}];
+    // иногда подключается второй — по характеру, не всегда
+    if(Math.random()<(CREW_STYLE[who]?CREW_STYLE[who].emo*0.6:0.3)){
+        const other=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>w!==who)[Math.floor(Math.random()*4)];
+        const bank2=bank[other];
+        if(bank2&&bank2.length){
+            const j=Math.floor(Math.random()*bank2.length);
+            out.push({who:other,text:bank2[j].replace(/\{me\}/g,userName||'напарник')});
+        }
+    }
+    return out;
 }
 
 // ответы по существу — из реального состояния корабля
@@ -4373,10 +4399,16 @@ const OFFTOPIC_REPLY=[
     {who:'NUR',text:'Тема вне моей базы. Вероятность, что она относится к рейсу до {dest}, — низкая. Рекомендую сменить тему.'}
 ];
 function offTopicLines(){
-    const pool=OFFTOPIC_REPLY.slice();
-    const first=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+    // Лючия охотнее других отвечает на «левое» и сама уводит разговор в сторону
+    const weights={KEP:1,ZAR:1,LUS:4,FIN:2,NUR:1};
+    const bag=[];
+    OFFTOPIC_REPLY.forEach(x=>{for(let i=0;i<(weights[x.who]||1);i++)bag.push(x)});
+    const first=bag[Math.floor(Math.random()*bag.length)];
     const out=[first];
-    if(Math.random()<0.35&&pool.length)out.push(pool[Math.floor(Math.random()*pool.length)]);
+    if(Math.random()<0.45){
+        const rest=OFFTOPIC_REPLY.filter(x=>x.who!==first.who);
+        if(rest.length)out.push(rest[Math.floor(Math.random()*rest.length)]);
+    }
     return out;
 }
 
@@ -4601,8 +4633,10 @@ function openDecision(kind){
     pendingDecision={kind,options,stances,vote:null,deadline:Date.now()+18000};
     chatHeat(90000);
     setTimeout(()=>crewSay('KEP',question+` Мне нужен ваш голос, не мой.`,false,{urgent:true}),400);
-    // экипаж высказывается по одному — коротко, по делу (двое, не четверо)
-    const order=['ZAR','LUS','FIN','NUR'].sort(()=>Math.random()-0.5).slice(0,2);
+    // экипаж высказывается — от двух человек до всех, кто на связи
+    const pool=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0);
+    const speakers=Math.max(2,Math.min(pool.length,2+Math.floor(Math.random()*Math.max(1,pool.length-1))));
+    const order=(pool.length?pool:['ZAR','LUS']).sort(()=>Math.random()-0.5).slice(0,speakers);
     order.forEach((who,i)=>{
         const st=stances[who];
         const line=(POOL_VOTE[who]||{})[st]||'';
