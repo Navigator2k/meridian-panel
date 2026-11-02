@@ -1814,6 +1814,8 @@ function idleConvo(allow){
 }
 function crewGradeFuel(){return (typeof fuelPct!=='undefined')&&fuelPct<38}
 function getDestPair(){const d=(nextStation||(currentMission&&currentMission.dest)||'').replace('СТАНЦИЯ «','').replace('«','').replace('»','')||'пункта высадки';return d}
+// имя пункта в именительном падеже — для фраз, где «до» не подходит
+function getDestName(){const d=(nextStation||(currentMission&&currentMission.dest)||'').replace('СТАНЦИЯ «','').replace('«','').replace('»','');return d||'пункт высадки'}
 
 function introChat(){
     crewSay('KEP','С возвращением на борт. Добро пожаловать на «Меридиан». Я Игорь Рудин — здесь последнее слово за мной, и я стараюсь, чтобы его не приходилось повторять.');
@@ -4221,9 +4223,9 @@ function stateAnswer(t){
     if(aboutWay||has(t)(['где мы','где находимся','куда','далеко','скоро'])){
         if(state===ShipState.TRANSIT){
             const left=Math.max(0,100-Math.round(transitProgress));
-            return[{who:'ZAR',text:`Курс — ${D}, прошли ${Math.round(transitProgress)}% — осталось около ${left}% пути. Отклонение в допуске, пересчитаю на выходе.`}];
+            return[{who:'ZAR',text:`Курс — ${getDestName()}, прошли ${Math.round(transitProgress)}% — осталось около ${left}% пути. Отклонение в допуске, пересчитаю на выходе.`}];
         }
-        return[{who:'ZAR',text:`Стоим у ${(currentStation||'').replace('СТАНЦИЯ «','').replace('»','')}, борт в порядке. Дальше курс — ${D}.`}];
+        return[{who:'ZAR',text:`Стоим у ${(currentStation||'').replace('СТАНЦИЯ «','').replace('»','')}, борт в порядке. Дальше курс — ${getDestName()}.`}];
     }
     if(has(t)(['топлив','бак','сколько лететь','хватит ли'])){
         return[{who:'ZAR',text:`Топливо ${Math.round(fuelPct)}%. До ${D} хватает с запасом на манёвры — если не геройствовать на тяге.`}];
