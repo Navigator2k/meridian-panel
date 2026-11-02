@@ -177,6 +177,11 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .cmsg.me .cwho{color:var(--gold)}
 .cmsg.me .ctext{color:rgba(255,236,208,0.93)}
 .cmsg.me .ctime{color:rgba(255,204,102,0.30)}
+/* голосование: капитан ставит вопрос — это должно быть видно сразу */
+.cmsg.vote{border-left:2px solid var(--gold);background:rgba(255,204,102,0.07);box-shadow:inset 0 0 0 1px rgba(255,204,102,0.18),0 0 12px rgba(255,204,102,0.06);padding:5px 8px}
+.cmsg.vote .ctext{color:rgba(255,236,200,0.95);font-weight:600}
+.cmsg.vote .cmsg-hdr .ctime{color:rgba(255,204,102,0.5)}
+.cmsg.vote::after{content:'ГОЛОСОВАНИЕ';display:inline-block;margin-top:2px;font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1px;color:var(--gold);opacity:.75}
 #chatWho{font-size:9px;color:var(--gold);letter-spacing:.5px;cursor:pointer;opacity:.8;border-bottom:1px dashed rgba(255,204,102,0.35);white-space:nowrap;font-family:'Rajdhani',sans-serif;font-weight:600}
 #chatWho:hover{opacity:1}
 #chatWho:empty{display:none}
@@ -1341,7 +1346,7 @@ const POOLS={
     mission:[
         {who:'KEP',text:'{task}. Звучит как работа, ради которой стоит лететь. За «Меридиан» не подведём — ни груз, ни тех, кто нас ждёт.'},
         {who:'ZAR',text:'Задача «{task}» принята. Предварительный курс проложила. Перепроверю дважды: один раз за капитана, второй — за нашу страховку.'},
-        {who:'FIN',text:'{task}! Наконец-то рейс с сюжетом. Сверил по картам: маршрут чистый. Почти. Остальное — как обычно, узнаем в полёте.'},
+        {who:'FIN',text:'{task}. Наконец-то работа по нам: сверил по картам — маршрут чистый. Почти. Остальное узнаем в полёте.'},
         {who:'LUS',text:'{task}. Трюм готов, руки — тем более. Главное, чтобы туда не просилось что-то, что я не обниму и не закреплю.'},
         {who:'NUR',text:'Задача «{task}» классифицирована. Выполнимость высокая, если биоформы не будут геройствовать там, где хватит протокола. Это уточнение, а не приказ.'}
     ],
@@ -1622,6 +1627,7 @@ function pumpChatJob(){
     const el=document.createElement('div');
     el.className='cmsg show'+(EXTERN[job.who]?' ext':'');
     el.innerHTML=`<div class="cmsg-hdr"><span class="ctime">${t}</span><span class="cwho" data-who="${job.who}" title="Вставить имя в сообщение" style="color:${sp.color}">${sp.glyph} ${sp.full}</span></div><span class="ctext"></span>`;
+    if(job.meta&&job.meta.vote)el.classList.add('vote');
     // лента прокручивается: держим низ, только если человек не ушёл читать
     // историю выше — тогда новое не дёргает вид
     const nearBottom=()=>log.scrollHeight-log.scrollTop-log.clientHeight<80;
@@ -1760,21 +1766,22 @@ function poolNext(kind,exclude){
  return flyLine(kind)||{who:pool[0].who,text:keyOf(pool[0])};
 }
 function react(kind,delay){
+ // реплику на событие пишет модель; пул — только если модель недоступна
+ setTimeout(()=>{
+   aiSay('event',{event:kind,scene:chatScene()},()=>legacyReact(kind,0),{base:300,step:1400,jitter:1000});
+ },(delay===undefined?600:delay));
+}
+function legacyReact(kind,delay){
  const line=poolNext(kind,lastSpeaker);
  if(!line)return;
  const urgent=(kind==='combat'||kind==='damaged'||kind==='emergency'||kind==='overheat'||kind==='air'||kind==='hyperIn');
- setTimeout(()=>crewSay(line.who,line.text,false,urgent?{urgent:true}:null),(delay===undefined?1100:delay)+Math.floor(Math.random()*1400));
+ setTimeout(()=>crewSay(line.who,line.text,false,urgent?{urgent:true}:null),(delay===undefined?300:delay));
 }
 // реакция на событие: реплику пишет модель. Рутинные операции (стыковка,
 // отход, сближение) больше не комментируются — иначе эфир плотный.
 function crewReact(kind,delay){
     if(!NOTABLE_EVENTS[kind])return;
-    const d=(delay===undefined?600:delay);
-    setTimeout(()=>{
-        aiSay('event',{event:kind,scene:chatScene()},
-            kind==='combat'||kind==='emergency'||kind==='damaged'?()=>react(kind,0):null,
-            {base:300,step:1400,jitter:1200});
-    },d);
+    react(kind,delay===undefined?600:delay);
 }
 // </crewPools>
 
@@ -3202,9 +3209,9 @@ function advanceShip(){
                 addJournal('КОНТРАКТ: предложен '+currentMission.label+' → '+currentMission.dest,'good');
                 if(passengerList.length){crewReact('passenger')}
                 if(cargoList.length){react('cargoLoad')}
-                // капитан спрашивает команду — решение принимается голосованием,
-                // в котором голос пользователя весит столько же, сколько любой другой
-                openDecision('cargo');
+                // капитан ставит вопрос не каждый раз: выборов должно быть немного
+                if(Math.random()<0.65)openDecision('cargo');
+                else if(credits>30000&&Math.random()<0.5)openDecision('upgrade');
             }
             if(stateTimer>7&&!pendingDecision){
                 setState(ShipState.UNDOCKING);
@@ -3277,10 +3284,10 @@ function advanceShip(){
                     addJournal(notes[Math.floor(Math.random()*notes.length)]);
                 }
             }
-            // развилка на переходе: тема зависит от обстановки
-            if(!legLog.routeAsked&&transitProgress>=34&&transitProgress<62&&!pendingDecision){
+            // развилка на переходе: тема зависит от обстановки, и голосуем не каждый раз
+            if(!legLog.routeAsked&&transitProgress>=34&&transitProgress<62){
                 legLog.routeAsked=true;
-                openDecision(pickTransitDecision());
+                if(!pendingDecision&&Math.random()<0.55)openDecision(pickTransitDecision());
             }
             if(!legLog.prep&&transitProgress>=50){
                 legLog.prep=true;
@@ -4526,7 +4533,8 @@ function scheduleLines(lines,opts){
     const step=(o.step===undefined?1200:o.step);
     arr.forEach((l,i)=>{
         const d=base+i*(step+Math.random()*(o.jitter===undefined?900:o.jitter));
-        setTimeout(()=>crewSay(l.who,fillTemplate(l.text),prio),d);
+        const meta=(i===0&&o.firstMeta)?o.firstMeta:null;
+        setTimeout(()=>crewSay(l.who,fillTemplate(l.text),prio,meta),d);
     });
 }
 
@@ -4681,6 +4689,28 @@ function decisionSpec(kind){
             ]
         };
     }
+    if(kind==='upgrade'){
+        return {
+            options:[{id:'engines',label:'выжать ход'},{id:'shields',label:'усилить защиту'}],
+            stances:{KEP:'engines',ZAR:'engines',LUS:'shields',FIN:'engines',NUR:'shields'},
+            ask:[
+                'Есть деньги на одну доработку. Ход или защита?',
+                'Мастерская предлагает выбор: движки или щиты. Что ставим?',
+                'До следующего порта — одна доработка. Что важнее сейчас?'
+            ]
+        };
+    }
+    if(kind==='contact'){
+        return {
+            options:[{id:'ally',label:'пойти на контакт'},{id:'quiet',label:'остаться незаметными'}],
+            stances:{KEP:(hullPct>75)?'ally':'quiet',ZAR:'quiet',LUS:'ally',FIN:'ally',NUR:'quiet'},
+            ask:[
+                'Рядом чужой борт, и он не прячется. Открываемся или проходим тихо?',
+                'Нас заметили. Ответить на связь или молчать и идти дальше?',
+                'Есть шанс на хороший контакт. И шанс на плохой. Что выбираем?'
+            ]
+        };
+    }
     // route
     return {
         options:[{id:'direct',label:'напрямую'},{id:'detour',label:'в обход'}],
@@ -4695,10 +4725,12 @@ function decisionSpec(kind){
 
 // какая тема спора — зависит от обстановки, а не одна и та же
 function pickTransitDecision(){
-    const pool=['route','rescue'];
+    const pool=['route'];
     if(fuelPct<70)pool.push('fuel');
     if(cargoList.length)pool.push('jettison');
     if(passengerList.length)pool.push('rescue');
+    if(Math.random()<0.35)pool.push('contact');
+    if(Math.random()<0.25)pool.push('rescue');
     return pool[Math.floor(Math.random()*pool.length)];
 }
 
@@ -4741,7 +4773,7 @@ function openDecision(kind){
             const line=(POOL_VOTE[who]||{})[stances[who]]||'';
             if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2400+i*(3200+Math.random()*2400));
         });
-    },{base:500,step:1800,jitter:1200,prio:true,limit:6});
+    },{base:500,step:1800,jitter:1200,prio:true,limit:6,firstMeta:{vote:true}});
     // отдельный вопрос лично игроку — тут имя уместно
     if(userName&&Math.random()<0.4){
         const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
@@ -4764,7 +4796,11 @@ const POOL_VOTE={
          help:'Идём помогать. Расход посчитаю на обратном пути, людей в вакууме не бросают.',
          pass:'Мимо. У нас груз и срок, а чужой аварийный маяк — не наш контракт.',
          drop:'Сбрасываем. Груз стоит дешевле, чем ремонт корпуса в поясе.',
-         keep:'Держим. Корпус пока держит, а груз — это чей-то заказ.'},
+         keep:'Держим. Корпус пока держит, а груз — это чей-то заказ.',
+         engines:'Ход важнее. Быстрее выйдем — меньше времени под ударом.',
+         shields:'Защита. Я не хочу считать пробоины после первого же контакта.',
+         ally:'Идём на контакт. Данные лишними не бывают.',
+         quiet:'Тихо. Нам не нужны свидетели и лишние вопросы.'},
     LUS:{take:'Трюм выдержит, стяжки выдержат, я выдержу. Берём.',
          skip:'Этот груз пахнет так, что я не хочу потом объяснять, чем. Отказ.',
          direct:'Обшивка цела, я слушала. Можно напрямую.',
@@ -4774,7 +4810,11 @@ const POOL_VOTE={
          help:'Конечно помогаем. Там люди, а не контейнеры.',
          pass:'Мимо так мимо. Только потом не говори, что я не предлагала помочь.',
          drop:'Скидывай. Я не буду латать обшивку из-за чужих коробок.',
-         keep:'Не трогай груз. Он закреплён моими руками, и он доедет.'},
+         keep:'Не трогай груз. Он закреплён моими руками, и он доедет.',
+         engines:'Ход — это хорошо, но руки я оставила бы на щитах.',
+         shields:'Щиты. Мне надоело латать обшивку после каждого умника с пушкой.',
+         ally:'Поговорим. Может, у них есть нормальные прокладки и нормальный кофе.',
+         quiet:'Пройдём тихо. Я не хочу, чтобы нас запомнили.'},
     FIN:{take:'Скучно не будет — уже причина. Берём, я знаю короткую дорогу.',
          skip:'Знаю я эти контейнеры. Отказ, и без обид.',
          direct:'Напрямую! Там мой знакомый буй, он плохого не посоветует.',
@@ -4784,7 +4824,11 @@ const POOL_VOTE={
          help:'Помогаем, конечно! Это же как в кино — только мы настоящие.',
          pass:'Мимо? Ну… ладно. Только я это запомню.',
          drop:'Сбросить груз? Жалко. Но уйти живыми — тоже неплохо.',
-         keep:'Не сбрасывай! Мы его везли, мы его и довезём.'},
+         keep:'Не сбрасывай! Мы его везли, мы его и довезём.',
+         engines:'Ход! Больше хода — больше дорог, где мы ещё не были.',
+         shields:'Щиты скучные, но с ними живым летать приятнее.',
+         ally:'Контакт! Это же шанс услышать что-то, чего нет в картах.',
+         quiet:'Тихо так тихо. Только скучно, капитан.'},
     NUR:{take:'Расчёт риска в допуске. Вероятность успеха высокая. Берём.',
          skip:'Риск выше нормы, выгода ниже. Отказ — это не трусость, это арифметика.',
          direct:'Кратчайший путь повышает и риск. Но риск в допуске. Голосую — напрямую.',
@@ -4794,7 +4838,11 @@ const POOL_VOTE={
          help:'Сигнал бедствия: по протоколу помощь обязательна, если не создаёт угрозы борту.',
          pass:'Протокол допускает отказ при риске для груза. Фиксирую отказ.',
          drop:'Сброс части массы повышает шанс ухода на 34%. Рекомендую.',
-         keep:'Сохранение груза допустимо. Риск оцениваю как умеренный.'},
+         keep:'Сохранение груза допустимо. Риск оцениваю как умеренный.',
+         engines:'Прирост хода снижает время под угрозой на 18%. Разумно.',
+         shields:'Щиты окупаются после первого попадания, а не до него.',
+         ally:'Контакт даёт данные. Данные дают преимущество. За.',
+         quiet:'Молчание снижает вероятность внимания к нам до 12%. За.'},
     KEP:{take:'Берём. Довезём — вопрос не в кредитах, а в характере.',
          skip:'Отказываемся. Живой экипаж дешевле любого контракта.',
          direct:'Напрямую. Держимся вместе — прорвёмся.',
@@ -4804,7 +4852,11 @@ const POOL_VOTE={
          help:'Помогаем. Мы не те, кто проходит мимо.',
          pass:'Проходим мимо. Наш долг — довезти своих.',
          drop:'Сбрасываем. Железо заменим, людей нет.',
-         keep:'Груз не трогаем. Уходить будем с ним.'}
+         keep:'Груз не трогаем. Уходить будем с ним.',
+         engines:'Ставим ход. Быстро уйти — тоже защита.',
+         shields:'Ставим щиты. Дешевле, чем чинить то, что пробили.',
+         ally:'Отвечаем. Мы не те, кто прячется.',
+         quiet:'Молчим. Нам не нужна репутация в этом секторе.'}
 };
 const POOL_ROUTE={
     ZAR:{direct:'Напрямую — минус смена по времени. Пересчитала дважды: успеваем.',
@@ -4896,6 +4948,31 @@ function resolveDecision(){
             addJournal('ГРУЗ: держим всё — корпус получил лишнее','bad');
             showBanner('ИДЁМ С ГРУЗОМ','cyan',3800);
             setTimeout(()=>crewSay('KEP','Держим груз. Корпус примет, а заказчик дождётся.',false,{urgent:true}),800);
+        }
+    }else if(d.kind==='upgrade'){
+        if(winner==='engines'){
+            engineLevel=Math.min(3,engineLevel+1);
+            credits=Math.max(0,credits-8000);
+            addJournal('ДОРАБОТКА: выжали ход, двигатель до уровня '+engineLevel+' (−8 000 КР)','money');
+            showBanner('ДВИГАТЕЛЬ: УРОВЕНЬ '+engineLevel,'cyan',4000);
+        }else{
+            shieldLevel=Math.min(3,shieldLevel+1);
+            shieldPct=100;
+            credits=Math.max(0,credits-8000);
+            addJournal('ДОРАБОТКА: усилили защиту, щиты до уровня '+shieldLevel+' (−8 000 КР)','money');
+            showBanner('ЩИТЫ: УРОВЕНЬ '+shieldLevel,'cyan',4000);
+        }
+        updateStateBars();updateCredits();
+    }else if(d.kind==='contact'){
+        if(winner==='ally'){
+            const gain=3500+Math.floor(Math.random()*4500);
+            credits+=gain;
+            addJournal('КОНТАКТ: вышли на связь, обменялись данными и грузом — +'+fmt(gain)+' КР','money');
+            showBanner('КОНТАКТ УСТАНОВЛЕН','gold',4000);
+            updateCredits();
+        }else{
+            addJournal('КОНТАКТ: остались незаметными, чужой борт прошёл мимо','good');
+            showBanner('ПРОШЛИ ТИХО','cyan',3500);
         }
     }else{
         routeMode=winner;
