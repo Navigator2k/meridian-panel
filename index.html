@@ -1633,7 +1633,8 @@ function pumpChatJob(){
     const crewBadge=document.getElementById('crewBadge');
     crewBadge.className='badge warn';crewBadge.textContent='ЕСТЬ НОВЫЕ';
     setTimeout(()=>{if(crewBadge.textContent==='ЕСТЬ НОВЫЕ'){crewBadge.className='badge ok';crewBadge.textContent='В ЭФИРЕ'}},8000);
-    const finish=()=>{
+    const finish=(reveal)=>{
+        if(reveal)try{renderMentions(bad,job.text)}catch(e){}
         chatTyping=false;
         activeChat=null;
         const pr=Date.now()<chatRushUntil;
@@ -1645,7 +1646,7 @@ function pumpChatJob(){
         if(nearBottom())log.scrollTop=log.scrollHeight;
         if(job.meta&&job.meta.photo)chatRemember(job.who,'[фото] '+(job.meta.cap||''),{photo:job.meta.photo,cap:job.meta.cap||''});
         else chatRemember(job.who,'[фото]');
-        finish();
+        finish(false);
     }else{
         // набор идёт по кадрам из mainLoop: таймеры браузер душит, когда
         // вкладка не в фокусе, а анимационный цикл работает всегда
@@ -1660,10 +1661,10 @@ function finishActiveChat(){
     const a=activeChat;
     if(!a||a.done)return;
     a.i=a.text.length;
-    try{a.bad.textContent=a.text}catch(e){}
+    try{renderWithNames(a.bad,a.text)}catch(e){}
     a.done=true;
     chatRemember(a.who,a.text);
-    a.finish();
+    a.finish(true);
 }
 function chatTypeTick(){
     const a=activeChat;
@@ -1677,8 +1678,9 @@ function chatTypeTick(){
     if(wasStick&&a.log)a.log.scrollTop=a.log.scrollHeight;
     if(a.i>=a.text.length){
         a.done=true;
+        try{renderWithNames(a.bad,a.text)}catch(e){}
         chatRemember(a.who,a.text);
-        a.finish();
+        a.finish(true);
         return;
     }
     a.nextAt=now+(rush?12:26+Math.random()*34);
@@ -3265,10 +3267,10 @@ function advanceShip(){
                     addJournal(notes[Math.floor(Math.random()*notes.length)]);
                 }
             }
-            // развилка маршрута: капитан спрашивает команду — напрямую или в обход
+            // развилка на переходе: тема зависит от обстановки
             if(!legLog.routeAsked&&transitProgress>=34&&transitProgress<62&&!pendingDecision){
                 legLog.routeAsked=true;
-                openDecision('route');
+                openDecision(pickTransitDecision());
             }
             if(!legLog.prep&&transitProgress>=50){
                 legLog.prep=true;
@@ -4535,7 +4537,7 @@ function userSay(text){
     el.innerHTML='<div class="cmsg-hdr"><span class="ctime">'+t+'</span><span class="cwho"></span></div><span class="ctext"></span>';
     el.querySelector('.cwho').textContent=userName||'ВЫ';
     el.querySelector('.cwho').classList.add('me-self');
-    renderUserText(el.querySelector('.ctext'),text);
+    renderWithNames(el.querySelector('.ctext'),text);
     const stick=log.scrollHeight-log.scrollTop-log.clientHeight<48;
     log.appendChild(el);
     trimFeed(log);
@@ -4576,47 +4578,100 @@ let pendingDecision=null;
 let routeMode='normal';
 let preVote=null;
 
-const VOTE_WORDS={
-    take:['бер','берем','взять','берем','согласен','да','груз нужен','плюс','поехали'],
-    skip:['не бер','отказ','против','нет','не надо','не стоит','нельзя','опасно'],
-    direct:['напрямую','прямо','напрям','рискнем','быстрее','через'],
-    detour:['обход','в обход','облет','обойти','безопасн','не риск','аккуратно']
-};
+const VOTE_RULES=[
+    ['keep',['не сбрас','не выбрас','не трога','держим','с грузом','везем','везём']],
+    ['later',['до порта','потом','дотян','подожд','позже','не сейчас']],
+    ['pass',['мимо','не вмеш','проходим','броса','остав']],
+    ['drop',['сброс','скин','выкин','за борт','выброс']],
+    ['now',['заправ','сейчас','танкер']],
+    ['help',['помо','сворач','спас']],
+    ['detour',['обход','в обход','облет','обойти','безопасн','не риск']],
+    ['skip',['не бер','отказ','против','нет','не надо','не стоит']],
+    ['direct',['напрямую','прямо','быстрее','через']],
+    ['take',['бер','взять','согласен','да','плюс']]
+];
 function readVote(t){
-    if(has(t)(VOTE_WORDS.detour))return 'detour';
-    if(has(t)(VOTE_WORDS.skip))return 'skip';
-    if(has(t)(VOTE_WORDS.direct))return 'direct';
-    if(has(t)(VOTE_WORDS.take))return 'take';
+    for(const rule of VOTE_RULES){
+        if(has(t)(rule[1]))return rule[0];
+    }
     return null;
+}
+
+// Механика одна: капитан ставит вопрос, экипаж голосует, голос игрока равен
+// остальным. Ситуации — по мотивам сюжета, не дословно по примерам.
+function decisionSpec(kind){
+    const heavy=holdFillPct()>72;
+    const hazmat=cargoList.some(c=>c.cls==='hazmat');
+    if(kind==='cargo'){
+        return {
+            options:[{id:'take',label:'взять'},{id:'skip',label:'отказаться'}],
+            stances:{KEP:(hazmat&&heavy)?'skip':'take',ZAR:(currentMission&&currentMission.reward<9000&&heavy)?'skip':'take',LUS:hazmat?'skip':'take',FIN:'take',NUR:hazmat?'skip':'take'},
+            ask:[
+                'Есть заказ до '+getDestPair()+'. Смотрим: берём или пропускаем?',
+                'Контракт на столе. Говорим коротко: да или нет.',
+                'Работа есть, но не бесплатная. Брать?'
+            ]
+        };
+    }
+    if(kind==='fuel'){
+        return {
+            options:[{id:'now',label:'заправиться сейчас'},{id:'later',label:'дотянуть до порта'}],
+            stances:{KEP:fuelPct<40?'now':'later',ZAR:fuelPct<45?'now':'later',LUS:fuelPct<35?'now':'later',FIN:'later',NUR:fuelPct<50?'now':'later'},
+            ask:[
+                'Танкер на траверзе. Приткнуться сейчас или дотянуть до порта?',
+                'Дозаправка на ходу — дороже и дольше. Берём или ждём порт?',
+                'Топливо '+Math.round(fuelPct)+'%. Заправляемся здесь или тянем?'
+            ]
+        };
+    }
+    if(kind==='rescue'){
+        return {
+            options:[{id:'help',label:'помочь'},{id:'pass',label:'пройти мимо'}],
+            stances:{KEP:'help',ZAR:(fuelPct<45||legDist>2.4)?'pass':'help',LUS:'help',FIN:'help',NUR:(hullPct<70)?'pass':'help'},
+            ask:[
+                'Сигнал бедствия в двух часах хода. Сворачиваем или идём дальше?',
+                'Там кто-то просит помощи. Отклоняемся?',
+                'Может быть ловушка. Но если настоящие — мы ближе всех.'
+            ]
+        };
+    }
+    if(kind==='jettison'){
+        return {
+            options:[{id:'drop',label:'сбросить груз'},{id:'keep',label:'уходить с грузом'}],
+            stances:{KEP:'drop',ZAR:(hullPct>80)?'keep':'drop',LUS:'keep',FIN:'keep',NUR:'drop'},
+            ask:[
+                'Сбросим часть трюма — уйдём налегке. Оставляем всё — рискуем корпусом.',
+                'Груз или обшивка. Решаем быстро.',
+                'Балласт за борт или держим до конца?'
+            ]
+        };
+    }
+    // route
+    return {
+        options:[{id:'direct',label:'напрямую'},{id:'detour',label:'в обход'}],
+        stances:{KEP:(hullPct<70||shieldPct<40)?'detour':'direct',ZAR:(fuelPct<45||hullPct<65)?'detour':'direct',LUS:hullPct<78?'detour':'direct',FIN:'direct',NUR:(hullPct<75||shieldPct<50)?'detour':'direct'},
+        ask:[
+            'Сектор впереди нехороший. Через него или кругом?',
+            'Прямая — быстрее. Обход — целее. Что выбираем?',
+            'Время против корпуса. Напрямую или в обход?'
+        ]
+    };
+}
+
+// какая тема спора — зависит от обстановки, а не одна и та же
+function pickTransitDecision(){
+    const pool=['route','rescue'];
+    if(fuelPct<70)pool.push('fuel');
+    if(cargoList.length)pool.push('jettison');
+    if(passengerList.length)pool.push('rescue');
+    return pool[Math.floor(Math.random()*pool.length)];
 }
 
 function openDecision(kind){
     if(pendingDecision)return;
-    const heavy=holdFillPct()>72;
-    const hazmat=cargoList.some(c=>c.cls==='hazmat');
-    let stances,question,options;
-    if(kind==='cargo'){
-        options=[{id:'take',label:'взять'},{id:'skip',label:'отказаться'}];
-        stances={
-            KEP:(hazmat&&heavy)?'skip':'take',
-            ZAR:(currentMission&&currentMission.reward<9000&&heavy)?'skip':'take',
-            LUS:hazmat?'skip':'take',
-            FIN:'take',
-            NUR:hazmat?'skip':'take'
-        };
-        const n=cargoList.length,p=passengerList.length;
-        question=`${userName?userName+', ':''}вопрос ко всем: берём этот контракт? ${n?n+' позиций груза':''}${n&&p?' и ':''}${p?p+' пассажир(а)':''} до ${getDestPair()}.`;
-    }else{
-        options=[{id:'direct',label:'напрямую'},{id:'detour',label:'в обход'}];
-        stances={
-            KEP:(hullPct<70||shieldPct<40)?'detour':'direct',
-            ZAR:(fuelPct<45||hullPct<65)?'detour':'direct',
-            LUS:hullPct<78?'detour':'direct',
-            FIN:'direct',
-            NUR:(hullPct<75||shieldPct<50)?'detour':'direct'
-        };
-        question=`${userName?userName+', ':''}решаем на ходу: идём напрямую через опасный сектор или берём в обход и теряем время?`;
-    }
+    const spec=decisionSpec(kind);
+    const options=spec.options;
+    const stances=Object.assign({},spec.stances);
     // живой экипаж не голосует единогласно: один-два человека почти всегда
     // думают иначе — поэтому голос человека реально перевешивает
     {
@@ -4627,20 +4682,28 @@ function openDecision(kind){
             let k=keys[Math.floor(Math.random()*keys.length)],guard=0;
             while(used.indexOf(k)>=0&&guard++<20)k=keys[Math.floor(Math.random()*keys.length)];
             used.push(k);
-            stances[k]=(stances[k]==='take')?'skip':(stances[k]==='skip')?'take':(stances[k]==='direct')?'detour':'direct';
+            const other=options.find(o=>o.id!==stances[k]);
+            if(other)stances[k]=other.id;
         }
     }
+    const q=spec.ask[Math.floor(Math.random()*spec.ask.length)];
     pendingDecision={kind,options,stances,vote:null,deadline:Date.now()+18000};
     chatHeat(90000);
-    setTimeout(()=>crewSay('KEP',question+` Мне нужен ваш голос, не мой.`,false,{urgent:true}),400);
+    // капитан говорит к экипажу — без обращения по имени: если ко всем, то ко всем
+    setTimeout(()=>crewSay('KEP',q,false,{urgent:true}),400);
+    // а вот отдельный вопрос лично игроку — тут имя уместно
+    if(userName&&Math.random()<0.4){
+        const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
+        setTimeout(()=>crewSay('KEP',direct[Math.floor(Math.random()*direct.length)],false,{urgent:true}),1500);
+    }
     // экипаж высказывается — от двух человек до всех, кто на связи
-    const pool=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0);
+    const pool=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0&&w!=='KEP');
     const speakers=Math.max(2,Math.min(pool.length,2+Math.floor(Math.random()*Math.max(1,pool.length-1))));
     const order=(pool.length?pool:['ZAR','LUS']).sort(()=>Math.random()-0.5).slice(0,speakers);
     order.forEach((who,i)=>{
         const st=stances[who];
         const line=(POOL_VOTE[who]||{})[st]||'';
-        if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2200+i*(3200+Math.random()*2400));
+        if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2400+i*(3200+Math.random()*2400));
     });
     if(preVote&&preVote.kind===kind&&Date.now()-preVote.t<45000){
         pendingDecision.vote=preVote.id;
@@ -4651,15 +4714,55 @@ function openDecision(kind){
 
 const POOL_VOTE={
     ZAR:{take:'Считаю: топливо и время сходятся, награда {reward} закрывает риск. Голосую — берём.',
-         skip:'Вес большой, награда маленькая — за такой рейс я не подпишусь. Отказ.'},
+         skip:'Вес большой, награда маленькая — за такой рейс я не подпишусь. Отказ.',
+         direct:'Напрямую — минус смена по времени. Пересчитала дважды: успеваем.',
+         detour:'В обход. Терять время обидно, но терять обшивку — дороже.',
+         now:'Заливаемся здесь. Считать простои на танкере я не буду — потом дороже.',
+         later:'Тянем до порта. Там и цена, и очередь, и полный бак без спешки.',
+         help:'Идём помогать. Расход посчитаю на обратном пути, людей в вакууме не бросают.',
+         pass:'Мимо. У нас груз и срок, а чужой аварийный маяк — не наш контракт.',
+         drop:'Сбрасываем. Груз стоит дешевле, чем ремонт корпуса в поясе.',
+         keep:'Держим. Корпус пока держит, а груз — это чей-то заказ.'},
     LUS:{take:'Трюм выдержит, стяжки выдержат, я выдержу. Берём.',
-         skip:'Этот груз пахнет так, что я не хочу потом объяснять, чем. Отказ.'},
+         skip:'Этот груз пахнет так, что я не хочу потом объяснять, чем. Отказ.',
+         direct:'Обшивка цела, я слушала. Можно напрямую.',
+         detour:'Обход. Я не хочу латать то, что можно было объехать.',
+         now:'Да заправимся уже, я на этой тяге корму слышу хуже, чем хочу.',
+         later:'До порта доживём. Не дёргай баки на ходу, я их сама ставила.',
+         help:'Конечно помогаем. Там люди, а не контейнеры.',
+         pass:'Мимо так мимо. Только потом не говори, что я не предлагала помочь.',
+         drop:'Скидывай. Я не буду латать обшивку из-за чужих коробок.',
+         keep:'Не трогай груз. Он закреплён моими руками, и он доедет.'},
     FIN:{take:'Скучно не будет — уже причина. Берём, я знаю короткую дорогу.',
-         skip:'Знаю я эти контейнеры. Отказ, и без обид.'},
+         skip:'Знаю я эти контейнеры. Отказ, и без обид.',
+         direct:'Напрямую! Там мой знакомый буй, он плохого не посоветует.',
+         detour:'Обход так обход. Дорога длиннее, зато без драмы.',
+         now:'Танкер! Давайте приткнёмся, я давно хотел посмотреть на их кухню.',
+         later:'Да дотянем, у нас же есть ещё! Не хочу стоять в очереди.',
+         help:'Помогаем, конечно! Это же как в кино — только мы настоящие.',
+         pass:'Мимо? Ну… ладно. Только я это запомню.',
+         drop:'Сбросить груз? Жалко. Но уйти живыми — тоже неплохо.',
+         keep:'Не сбрасывай! Мы его везли, мы его и довезём.'},
     NUR:{take:'Расчёт риска в допуске. Вероятность успеха высокая. Берём.',
-         skip:'Риск выше нормы, выгода ниже. Отказ — это не трусость, это арифметика.'},
+         skip:'Риск выше нормы, выгода ниже. Отказ — это не трусость, это арифметика.',
+         direct:'Кратчайший путь повышает и риск. Но риск в допуске. Голосую — напрямую.',
+         detour:'Обход снижает вероятность боя на 40%. Голосую — в обход.',
+         now:'Дозаправка сейчас снижает риск сухого бака до 3%. Рекомендую.',
+         later:'Остаток топлива достаточен. Дозаправка в порту эффективнее на 22%.',
+         help:'Сигнал бедствия: по протоколу помощь обязательна, если не создаёт угрозы борту.',
+         pass:'Протокол допускает отказ при риске для груза. Фиксирую отказ.',
+         drop:'Сброс части массы повышает шанс ухода на 34%. Рекомендую.',
+         keep:'Сохранение груза допустимо. Риск оцениваю как умеренный.'},
     KEP:{take:'Берём. Довезём — вопрос не в кредитах, а в характере.',
-         skip:'Отказываемся. Живой экипаж дешевле любого контракта.'}
+         skip:'Отказываемся. Живой экипаж дешевле любого контракта.',
+         direct:'Напрямую. Держимся вместе — прорвёмся.',
+         detour:'В обход. Спешка не стоит корпуса.',
+         now:'Заправляемся. Пустой бак — это не риск, это уже ошибка.',
+         later:'Идём до порта. Топлива хватает, а спешка нам не нужна.',
+         help:'Помогаем. Мы не те, кто проходит мимо.',
+         pass:'Проходим мимо. Наш долг — довезти своих.',
+         drop:'Сбрасываем. Железо заменим, людей нет.',
+         keep:'Груз не трогаем. Уходить будем с ним.'}
 };
 const POOL_ROUTE={
     ZAR:{direct:'Напрямую — минус смена по времени. Пересчитала дважды: успеваем.',
@@ -4696,33 +4799,75 @@ function resolveDecision(){
     let winner=best,how='по голосам';
     if(tie){winner=d.stances.KEP;how='голос капитана при равенстве'}
     const lab=(d.options.find(o=>o.id===winner)||{}).label||winner;
-    const userDecided=d.vote===winner&&cnt[winner]-1<=(cnt[d.stances.KEP]===winner?0:0);
     if(d.kind==='cargo'){
         if(winner==='skip'){
             cargoList=[];passengerList=[];
             currentMission={type:'IDLE',label:'ПЕРЕХОД ПОРОЖНЯКОМ',dest:(currentMission&&currentMission.dest)||stations[0],reward:0,task:'Свободный переход без контракта'};
             updateHold();updateMissionPanel();
-            addJournal('КОНТРАКТ: отклонён — ' + how + ' решили не брать','bad');
+            addJournal('КОНТРАКТ: отклонён — решили не брать ('+lab+', '+how+')','bad');
             showBanner('ОТКАЗ ОТ КОНТРАКТА','red',4500);
-            setTimeout(()=>crewSay('KEP','Решили — значит, решили. Идём порожняком, зато своим ходом.'),700);
+            setTimeout(()=>crewSay('KEP','Решили — значит, решили. Идём порожняком, зато своим ходом.',false,{urgent:true}),700);
         }else{
-            addJournal('КОНТРАКТ: принят — ' + how,'good');
+            addJournal('КОНТРАКТ: принят — '+lab+' ('+how+')','good');
             showBanner('КОНТРАКТ ПРИНЯТ','cyan',4000);
-            setTimeout(()=>crewSay('KEP','Принято. Грузимся и выходим, пока окно открыто.'),700);
+            setTimeout(()=>crewSay('KEP','Принято. Грузимся и выходим, пока окно открыто.',false,{urgent:true}),700);
+        }
+    }else if(d.kind==='fuel'){
+        if(winner==='now'){
+            const add=22+Math.floor(Math.random()*14);
+            fuelPct=Math.min(100,fuelPct+add);
+            credits=Math.max(0,credits-3500);
+            transitProgress=Math.max(0,transitProgress-4);
+            addJournal('ДОЗАПРАВКА: приткнулись к танкеру, +'+add+'% топлива, −3 500 КР, минус время','money');
+            showBanner('ДОЗАПРАВКА НА ХОДУ','cyan',4200);
+        }else{
+            addJournal('ДОЗАПРАВКА: отложена — идём до порта на остатке '+Math.round(fuelPct)+'%','good');
+            showBanner('ИДЁМ ДО ПОРТА','cyan',3800);
+        }
+        updateStateBars();updateCredits();
+    }else if(d.kind==='rescue'){
+        if(winner==='help'){
+            transitProgress=Math.max(0,transitProgress-6);
+            const reward=5000+Math.floor(Math.random()*6000);
+            credits+=reward;
+            addJournal('ПОМОЩЬ: отклонились к аварийному судну — экипаж спасён, +'+fmt(reward)+' КР, минус время','good');
+            showBanner('ЭКИПАЖ СПАСЁН','gold',4500);
+            setTimeout(()=>crewSay('LUS','Двое живых, один в шоке. Заводите в каюту, я воздух дам.',false,{urgent:true}),1400);
+            updateCredits();
+        }else{
+            addJournal('ПОМОЩЬ: сигнал бедствия оставлен без ответа — решение команды','bad');
+            showBanner('ПРОШЛИ МИМО','red',3800);
+            setTimeout(()=>crewSay('NUR','Фиксирую: сигнал остался без ответа. Вероятность, что это была ловушка, — 0.38. Это не оправдание, это данные.',false,{urgent:true}),1200);
+        }
+    }else if(d.kind==='jettison'){
+        if(winner==='drop'){
+            const kept=Math.max(1,Math.ceil(cargoList.length*0.6));
+            cargoList=cargoList.slice(0,kept);
+            hullPct=Math.min(100,hullPct+4);
+            updateHold();updateStateBars();
+            addJournal('ГРУЗ: часть трюма сброшена, масса меньше — уходим легче','bad');
+            showBanner('ГРУЗ СБРОШЕН','red',4200);
+            setTimeout(()=>crewSay('LUS','Понеслись легче. Жалко коробок, но корпус мне дороже.',false,{urgent:true}),800);
+        }else{
+            hullPct=Math.max(10,hullPct-5);
+            updateStateBars();
+            addJournal('ГРУЗ: держим всё — корпус получил лишнее','bad');
+            showBanner('ИДЁМ С ГРУЗОМ','cyan',3800);
+            setTimeout(()=>crewSay('KEP','Держим груз. Корпус примет, а заказчик дождётся.',false,{urgent:true}),800);
         }
     }else{
         routeMode=winner;
         if(winner==='direct'){
-            addJournal('МАРШРУТ: идём напрямую — быстрее, но риск выше (' + how + ')','bad');
+            addJournal('МАРШРУТ: напрямую — быстрее, риск выше ('+how+')','bad');
             showBanner('КУРС: НАПРЯМУЮ','cyan',4200);
         }else{
-            addJournal('МАРШРУТ: обход — теряем время, зато целее корпус (' + how + ')','good');
+            addJournal('МАРШРУТ: обход — теряем время, зато целее корпус ('+how+')','good');
             showBanner('КУРС: В ОБХОД','cyan',4200);
         }
-        setTimeout(()=>crewSay('FIN',winner==='direct'?'Держитесь. Идём короткой дорогой — она у меня нарисована красиво.':'Обходим. Дорога длиннее, зато без зажёванной плёнки.'),700);
+        setTimeout(()=>crewSay('FIN',winner==='direct'?'Держитесь. Идём короткой дорогой — она у меня нарисована красиво.':'Обходим. Дорога длиннее, зато без зажёванной плёнки.',false,{urgent:true}),700);
     }
     if(d.vote&&userName){
-        setTimeout(()=>crewSay('KEP',`${userName}, твой голос услышан — и он был не лишним.`),2400);
+        setTimeout(()=>crewSay('KEP',`${userName}, твой голос услышан — и он был не лишним.`,false,{urgent:true}),2400);
     }
 }
 
@@ -4851,19 +4996,31 @@ function mentionWho(who){
     }
 }
 
-// подсветка имён в уже отправленном сообщении
-function renderUserText(el,text){
-    el.textContent='';
+// подсветка имён в тексте — и в сообщениях игрока, и в репликах экипажа
+function renderWithNames(el,text){
+    // единая точка подсветки: имена экипажа и имя игрока
+    return renderMentions(el,text);
+}
+
+// имена в репликах экипажа тоже подсвечиваются: и члены команды, и игрок
+function renderMentions(el,text){
+    if(!el)return;
     const names=[];
     Object.keys(CREW_SHORT).forEach(k=>names.push(CREW_SHORT[k]));
-    const re=new RegExp('('+names.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','g');
+    if(userName)names.push(userName);
+    const uniq=[...new Set(names.filter(Boolean))].sort((a,b)=>b.length-a.length);
+    if(!uniq.length){el.textContent=text;return}
+    const body=uniq.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
+    const re=new RegExp('('+body+')([а-яё]{0,2})?','gi');
+    el.textContent='';
     let last=0,m;
     while((m=re.exec(text))){
         if(m.index>last)el.appendChild(document.createTextNode(text.slice(last,m.index)));
         const sp=document.createElement('span');
-        sp.className='mention';sp.textContent=m[1];
+        sp.className='mention';
+        sp.textContent=m[0];
         el.appendChild(sp);
-        last=m.index+m[1].length;
+        last=m.index+m[0].length;
     }
     if(last<text.length)el.appendChild(document.createTextNode(text.slice(last)));
 }
@@ -4971,7 +5128,7 @@ function restoreChat(lines){
             // старые сохранения хранили фото как HTML — показываем снимком
             txtEl.innerHTML=raw;
         }else{
-            txtEl.textContent=raw;
+            renderMentions(txtEl,raw);
         }
         log.appendChild(el);
         chatRemember(m.who,raw,m.photo?{photo:m.photo,cap:m.cap}:null);
@@ -5046,3 +5203,4 @@ window.__panelReady=1;
 </script>
 </body>
 </html>
+
