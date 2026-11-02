@@ -4541,13 +4541,15 @@ function scheduleLines(lines,opts){
 // все роды реплик идут в модель; fallback — только если сеть или модель недоступны
 const NOTABLE_EVENTS={hyperIn:1,hyperOut:1,combat:1,combatWin:1,damaged:1,emergency:1,air:1,fuelLow:1};
 function aiSay(kind,payload,fallback,opts){
-    if(!aiReady()){ if(fallback)fallback(); return; }
+    const o=opts||{};
+    const done=()=>{ if(o.then)setTimeout(o.then,o.thenDelay===undefined?2600:o.thenDelay); };
+    if(!aiReady()){ if(fallback)fallback(); done(); return; }
     aiViaProxy(Object.assign({kind},payload))
         .then(lines=>{
-            if(lines&&lines.length)scheduleLines(lines,opts);
-            else if(fallback)fallback();
+            if(lines&&lines.length){ scheduleLines(lines,o); done(); }
+            else { if(fallback)fallback(); done(); }
         })
-        .catch(()=>{ if(fallback)fallback(); });
+        .catch(()=>{ if(fallback)fallback(); done(); });
 }
 function crewTurn(p){
     if(!aiReady()){scheduleLines(localCrewTurn(p));return}
@@ -4762,6 +4764,13 @@ function openDecision(kind){
     const order=(pool.length?pool:['ZAR','LUS']).sort(()=>Math.random()-0.5).slice(0,speakers);
     const roster=order.map(who=>({who:who,label:(options.find(o=>o.id===stances[who])||{}).label||''}));
     // вопрос капитана и мнения пишет модель; заготовки — только при обрыве связи
+    const aiSayOpts={base:500,step:1800,jitter:1200,prio:true,limit:6,firstMeta:{vote:true}};
+    // отдельный вопрос лично игроку — только после вопроса команде
+    if(userName&&Math.random()<0.4){
+        const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
+        aiSayOpts.then=()=>crewSay('KEP',direct[Math.floor(Math.random()*direct.length)],false,{urgent:true});
+        aiSayOpts.thenDelay=Math.max(2500,(roster.length+1)*1500);
+    }
     aiSay('vote',{
         topic:kind,
         options:options.map(o=>({id:o.id,label:o.label})),
@@ -4773,12 +4782,7 @@ function openDecision(kind){
             const line=(POOL_VOTE[who]||{})[stances[who]]||'';
             if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2400+i*(3200+Math.random()*2400));
         });
-    },{base:500,step:1800,jitter:1200,prio:true,limit:6,firstMeta:{vote:true}});
-    // отдельный вопрос лично игроку — тут имя уместно
-    if(userName&&Math.random()<0.4){
-        const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
-        setTimeout(()=>crewSay('KEP',direct[Math.floor(Math.random()*direct.length)],false,{urgent:true}),5200);
-    }
+    },aiSayOpts);
     if(preVote&&preVote.kind===kind&&Date.now()-preVote.t<45000){
         pendingDecision.vote=preVote.id;
         preVote=null;
