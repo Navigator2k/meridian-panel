@@ -1765,7 +1765,17 @@ function react(kind,delay){
  const urgent=(kind==='combat'||kind==='damaged'||kind==='emergency'||kind==='overheat'||kind==='air'||kind==='hyperIn');
  setTimeout(()=>crewSay(line.who,line.text,false,urgent?{urgent:true}:null),(delay===undefined?1100:delay)+Math.floor(Math.random()*1400));
 }
-function crewReact(kind,delay){react(kind,delay)}
+// реакция на событие: реплику пишет модель. Рутинные операции (стыковка,
+// отход, сближение) больше не комментируются — иначе эфир плотный.
+function crewReact(kind,delay){
+    if(!NOTABLE_EVENTS[kind])return;
+    const d=(delay===undefined?600:delay);
+    setTimeout(()=>{
+        aiSay('event',{event:kind,scene:chatScene()},
+            kind==='combat'||kind==='emergency'||kind==='damaged'?()=>react(kind,0):null,
+            {base:300,step:1400,jitter:1200});
+    },d);
+}
 // </crewPools>
 
 // миниарки — короткие цепочки с причиной: эпизод -> пик -> развязка
@@ -4008,28 +4018,36 @@ function chatActivity(){
     chatQuietUntil=now;   // шаг управляет очередью
 }
 function emitChatLine(){
-    const r=Math.random();
-    // near a station, external people can break into the channel
+    // фон: реплику пишет модель под текущую обстановку.
+    // Заготовки включаются только если модель недоступна.
     const atStation=state===ShipState.DOCKED||state===ShipState.CARGO_OPS||state===ShipState.APPROACH||state===ShipState.DOCKING||state===ShipState.UNDOCKING;
-    if(atStation&&r<0.30){stationVoice();return}
-    // «фото» делится тот, кто сейчас в кубрике
-    if(r<0.10){
+    const r=Math.random();
+    if(atStation&&r<0.25){stationVoice();return}
+    if(r<0.12){
         const kind=['meteor','star','cargo','lock','star','station'][Math.floor(Math.random()*6)];
         const who=onDuty[Math.floor(Math.random()*onDuty.length)];
         crewPhoto(who,kind);
         return;
     }
-    // живая «жизнь вокруг»: слухи и пассажирские истории того же мира
+    if(aiReady()){
+        // если модель недоступна — эфир молчит, а не подсовывает заготовки
+        aiSay('ambient',{scene:chatScene()},null,{base:400,step:1000,jitter:800,prio:false,rush:false});
+        return;
+    }
+    legacyAmbient();
+}
+
+// запасной локальный вариант на случай обрыва связи с моделью
+function legacyAmbient(){
+    const r=Math.random();
     if(r<0.26&&lifeChatLine()){return}
     if(r<0.55&&idleConvo(allowedWho))return;
     if(r<0.72&&chatNewsLine(allowedWho))return;
-    // иначе — свежая реплика по состоянию рейса, только от тех, кто на связи
     for(let tries=0;tries<10;tries++){
         const cand=genCrewLine(allowedWho);
         if(!cand)break;
         if(_fresh(cand.text)&&crewSay(cand.who,cand.text))return;
     }
-    // нет свежих строк — чат спокойно молчит, копии не плодим
 }
 // кольцо «уже сказанного»: повтор того же текста в ближайшем окне чата не пройдёт
 let saidRing=[];
@@ -4230,6 +4248,7 @@ function chatScene(){
         pax:passengerList.map(p=>p.name).slice(0,4),
         fuel:Math.round(fuelPct),hull:Math.round(hullPct),shield:Math.round(shieldPct),air:Math.round(lifePct),
         progress:Math.round(transitProgress),
+        duty:(typeof onDuty!=='undefined'?onDuty.slice():null),
         decision:pendingDecision?{kind:pendingDecision.kind,options:pendingDecision.options.map(o=>o.label)}:null,
         history:chatHistory.slice(-12)
     };
@@ -4497,14 +4516,30 @@ function smalltalkReply(raw){
 }
 
 // ---- слой к модели: один и тот же контракт для прокси и локального движка ----
-function scheduleLines(lines){
+function scheduleLines(lines,opts){
     const arr=(lines||[]).filter(l=>l&&l.who&&l.text).slice(0,3);
     if(!arr.length)return;
-    chatRush(14000);
+    const o=opts||{};
+    if(o.rush!==false)chatRush(14000);
+    const prio=(o.prio!==false);
+    const base=(o.base===undefined?500:o.base);
+    const step=(o.step===undefined?1200:o.step);
     arr.forEach((l,i)=>{
-        const d=500+i*(1200+Math.random()*900);
-        setTimeout(()=>crewSay(l.who,fillTemplate(l.text),true),d);
+        const d=base+i*(step+Math.random()*(o.jitter===undefined?900:o.jitter));
+        setTimeout(()=>crewSay(l.who,fillTemplate(l.text),prio),d);
     });
+}
+
+// все роды реплик идут в модель; fallback — только если сеть или модель недоступны
+const NOTABLE_EVENTS={hyperIn:1,hyperOut:1,combat:1,combatWin:1,damaged:1,emergency:1,air:1,fuelLow:1};
+function aiSay(kind,payload,fallback,opts){
+    if(!aiReady()){ if(fallback)fallback(); return; }
+    aiViaProxy(Object.assign({kind},payload))
+        .then(lines=>{
+            if(lines&&lines.length)scheduleLines(lines,opts);
+            else if(fallback)fallback();
+        })
+        .catch(()=>{ if(fallback)fallback(); });
 }
 function crewTurn(p){
     if(!aiReady()){scheduleLines(localCrewTurn(p));return}
@@ -4689,22 +4724,29 @@ function openDecision(kind){
     const q=spec.ask[Math.floor(Math.random()*spec.ask.length)];
     pendingDecision={kind,options,stances,vote:null,deadline:Date.now()+18000};
     chatHeat(90000);
-    // капитан говорит к экипажу — без обращения по имени: если ко всем, то ко всем
-    setTimeout(()=>crewSay('KEP',q,false,{urgent:true}),400);
-    // а вот отдельный вопрос лично игроку — тут имя уместно
-    if(userName&&Math.random()<0.4){
-        const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
-        setTimeout(()=>crewSay('KEP',direct[Math.floor(Math.random()*direct.length)],false,{urgent:true}),1500);
-    }
-    // экипаж высказывается — от двух человек до всех, кто на связи
+    // кто выскажется — от двух человек до всех, кто на связи
     const pool=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0&&w!=='KEP');
     const speakers=Math.max(2,Math.min(pool.length,2+Math.floor(Math.random()*Math.max(1,pool.length-1))));
     const order=(pool.length?pool:['ZAR','LUS']).sort(()=>Math.random()-0.5).slice(0,speakers);
-    order.forEach((who,i)=>{
-        const st=stances[who];
-        const line=(POOL_VOTE[who]||{})[st]||'';
-        if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2400+i*(3200+Math.random()*2400));
-    });
+    const roster=order.map(who=>({who:who,label:(options.find(o=>o.id===stances[who])||{}).label||''}));
+    // вопрос капитана и мнения пишет модель; заготовки — только при обрыве связи
+    aiSay('vote',{
+        topic:kind,
+        options:options.map(o=>({id:o.id,label:o.label})),
+        roster:roster,
+        scene:chatScene()
+    },()=>{
+        setTimeout(()=>crewSay('KEP',q,false,{urgent:true}),400);
+        order.forEach((who,i)=>{
+            const line=(POOL_VOTE[who]||{})[stances[who]]||'';
+            if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2400+i*(3200+Math.random()*2400));
+        });
+    },{base:500,step:1800,jitter:1200,prio:true});
+    // отдельный вопрос лично игроку — тут имя уместно
+    if(userName&&Math.random()<0.4){
+        const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
+        setTimeout(()=>crewSay('KEP',direct[Math.floor(Math.random()*direct.length)],false,{urgent:true}),5200);
+    }
     if(preVote&&preVote.kind===kind&&Date.now()-preVote.t<45000){
         pendingDecision.vote=preVote.id;
         preVote=null;
