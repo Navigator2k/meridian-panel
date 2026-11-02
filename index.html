@@ -4218,7 +4218,9 @@ function aiTurn(p){
         body:JSON.stringify({
             model:CREW_AI.model,
             temperature:0.85,
-            max_tokens:260,
+            max_tokens:900,
+            // рассуждение этой модели не нужно: без него ответ впятеро короче
+            reasoning:{effort:'none',exclude:true},
             messages:[{role:'system',content:crewPrompt(p)}]
         })
     }).then(r=>{
