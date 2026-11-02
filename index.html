@@ -1532,6 +1532,9 @@ const chatRecent=[];
 const said=new Set();
 const chatQueue=[];
 let chatTyping=false;
+// общий ограничитель эфира: фоновая болтовня не чаще одной реплики в 10 с
+let lastAmbientSay=0;
+const AMBIENT_GAP=10000;
 // когда человек пишет — экипаж не тянет с ответом: очередь ускоряется
 let chatRushUntil=0;
 let activeChat=null;
@@ -1571,6 +1574,13 @@ function extSay(who,text){
 }
 function crewSay(who,text,prio,meta){
     const isPhoto=!!(meta&&meta.photo);
+    const urgent=!!(meta&&meta.urgent);
+    // фон не частит: между обычными репликами держим паузу, тревоги — вне лимита
+    if(!prio&&!urgent&&!isPhoto){
+        const now=Date.now();
+        if(now-lastAmbientSay<AMBIENT_GAP)return false;
+        lastAmbientSay=now;
+    }
     const key=who+'|'+text;
     // снимки не дедуплицируем: каждый кадр — свой, и повторов быть не должно
     if(!isPhoto){
@@ -1750,7 +1760,8 @@ function poolNext(kind,exclude){
 function react(kind,delay){
  const line=poolNext(kind,lastSpeaker);
  if(!line)return;
- setTimeout(()=>crewSay(line.who,line.text),(delay===undefined?1100:delay)+Math.floor(Math.random()*1400));
+ const urgent=(kind==='combat'||kind==='damaged'||kind==='emergency'||kind==='overheat'||kind==='air'||kind==='hyperIn');
+ setTimeout(()=>crewSay(line.who,line.text,false,urgent?{urgent:true}:null),(delay===undefined?1100:delay)+Math.floor(Math.random()*1400));
 }
 function crewReact(kind,delay){react(kind,delay)}
 // </crewPools>
@@ -1768,11 +1779,20 @@ const ARC_OXYGEN=[
  {who:'KEP',text:'Запас 3 часа, но команда у нас на 3 дня. Держимся вместе — воздух вернём.'},
  {who:'ZAR',text:'Скруббер {sys} в норме: поток 98%, O₂ в допуске. Смена закрыта без замечаний — дышим.'}
 ];
+function sayChain(list){
+    // короткий обмен: не больше двух реплик, с живыми паузами
+    let ms=400;
+    list.slice(0,2).forEach(pair=>{
+        setTimeout(()=>crewSay(pair[0],pair[1]),ms);
+        ms+=2600+Math.random()*4200;
+    });
+}
 function arcRun(arc,baseMs){
+ const steps=arc.slice(0,2);
  let ms=300;
- for(const step of arc){
+ for(const step of steps){
   setTimeout(()=>crewSay(step.who,fillTemplate(step.text)),ms);
-  ms+=baseMs+Math.floor(Math.random()*900);
+  ms+=baseMs+Math.floor(Math.random()*1400);
  }
 }
 
@@ -1785,40 +1805,51 @@ function idleConvo(allow){
     if(passengerList.length&&ok('KEP')&&Math.random()<0.35){
         const p=passengerList[0].name;
         const paxChain=Math.floor(Math.random()*3);
+        // из пассажирской сценки берём не больше двух реплик
         if(paxChain===0){
-            setTimeout(()=>crewSay('KEP',`${p} уже второй час смотрит в иллюминатор. Не тревожим — пусть привыкает к большому небу.`),500);
-            setTimeout(()=>crewSay('LUS',`Каюта «Гелиос», кстати, тёплая. Я там подтянула вентиль — дышится как на курорте.`),4100);
-            setTimeout(()=>crewSay('ZAR',`Записала: пассажир просил не шуметь утром. Утром будем шуметь тихо.`),7700);
+            sayChain([
+                ['KEP',`${p} уже второй час смотрит в иллюминатор. Не тревожим — пусть привыкает к большому небу.`],
+                ['LUS',`Каюта «Гелиос», кстати, тёплая. Я там подтянула вентиль — дышится как на курорте.`],
+                ['ZAR',`Записала: пассажир просил не шуметь утром. Утром будем шуметь тихо.`]
+            ]);
             return;
         }
         if(paxChain===1){
-            setTimeout(()=>crewSay('NUR',`Биоформа-гость: пульс спокойный, интерес к борту — умеренный. Поведение — образцовое.`),500);
-            setTimeout(()=>crewSay('FIN',`Спрошу у ${p}, из какого он сектора. Может, знает маршрут, которым я ещё не летал.`),4100);
-            setTimeout(()=>crewSay('KEP',`Только без экипажных баек про наш валичный отсек, Финн. Пассажир нам ещё обратный рейс сделает.`),7700);
+            sayChain([
+                ['NUR',`Биоформа-гость: пульс спокойный, интерес к борту — умеренный. Поведение — образцовое.`],
+                ['FIN',`Спрошу у ${p}, из какого он сектора. Может, знает маршрут, которым я ещё не летал.`],
+                ['KEP',`Только без экипажных баек про наш валичный отсек, Финн. Пассажир нам ещё обратный рейс сделает.`]
+            ]);
             return;
         }
-        setTimeout(()=>crewSay('ZAR',`${p} оформился по билету до ${getDestPair()}. Всё сходится — остальное наша забота.`),500);
-        setTimeout(()=>crewSay('KEP',`Для нас он просто человек в пути. Как и мы все — просто с работой позади и дома впереди.`),4100);
-        setTimeout(()=>crewSay('LUS',`Достал из запасов нормальное одеяло. Хочу, чтобы пассажир вспоминал «Меридиан» теплом, а не регламентом.`),7700);
+        sayChain([
+            ['ZAR',`${p} оформился по билету до ${getDestPair()}. Всё сходится — остальное наша забота.`],
+            ['KEP',`Для нас он просто человек в пути. Как и мы все — просто с работой позади и дома впереди.`],
+            ['LUS',`Достал из запасов нормальное одеяло. Хочу, чтобы пассажир вспоминал «Меридиан» теплом, а не регламентом.`]
+        ]);
         return;
     }
     if(crewGradeFuel()&&ok('ZAR')&&Math.random()<0.4){
         const low=Math.round(fuelPct);
-        setTimeout(()=>crewSay('ZAR',`Топливо ${Math.round(low||0)}% — считаю каждый литр до ${getDestPair()}. Без героизма на тяге.`),500);
-        setTimeout(()=>crewSay('FIN',`На такой цифре любой экономист за голову возьмётся. Но мы дойдём — у меня запасной план на тройном малом.`),4100);
-        setTimeout(()=>crewSay('KEP',`Сбавляем обороты. Пункт назначения не сбежит, а бак — единственный.`),7700);
+        sayChain([
+            ['ZAR',`Топливо ${Math.round(low||0)}% — считаю каждый литр до ${getDestPair()}. Без героизма на тяге.`],
+            ['FIN',`На такой цифре любой экономист за голову возьмётся. Но мы дойдём — у меня запасной план на тройном малом.`],
+            ['KEP',`Сбавляем обороты. Пункт назначения не сбежит, а бак — единственный.`]
+        ]);
         return;
     }
     // разговор в кубрике — только между теми, кто сейчас здесь
     const bank=BANTER.filter(b=>ok(b[0]));
     if(!bank.length)return;
     const b=bank[Math.floor(Math.random()*bank.length)];
+    // один короткий обмен (две реплики), а не весь диалог целиком
     let at=500;
-    for(let i=0;i<b.length;i+=2){
+    const take=Math.min(2,b.length);
+    for(let i=0;i<take;i+=2){
         const who=b[i],text=fillTemplate(b[i+1]);
         if(text!==undefined){
             setTimeout(()=>crewSay(who,text),at);
-            at+=1600+Math.random()*3200;
+            at+=2600+Math.random()*4200;
         }
     }
 }
@@ -3932,25 +3963,27 @@ function chatActivity(){
         if(now<chatStepAt)return;
         chatBurst--;
         emitChatLine();
-        chatStepAt=now+1800+Math.random()*5200;
-        if(chatBurst===0)chatQuietUntil=chatStepAt+40000+Math.random()*140000;
+        chatStepAt=now+2600+Math.random()*6500;
+        if(chatBurst===0)chatQuietUntil=chatStepAt+90000+Math.random()*240000;
         return;
     }
     if(now<chatQuietUntil)return;
     // «жара»: событие на борту — есть что обсудить; тихий рейс — молчим
-    const heat=(now<chatHeatUntil)?0.95:
-        (state===ShipState.COMBAT||state===ShipState.EMERGENCY)?0.8:
-        state===ShipState.DOCKED?0.32:
-        state===ShipState.HYPERSPACE?0.18:0.30;
+    const heat=(now<chatHeatUntil)?0.9:
+        (state===ShipState.COMBAT||state===ShipState.EMERGENCY)?0.65:
+        state===ShipState.DOCKED?0.20:
+        state===ShipState.HYPERSPACE?0.10:0.18;
     if(Math.random()>heat){
-        chatQuietUntil=now+12000+Math.random()*30000;
+        chatQuietUntil=now+25000+Math.random()*60000;
         return;
     }
-    chatBurst=Math.random()<0.55?1:(Math.random()<0.85?2:3);
+    // в основном одна реплика; обмен из двух-трёх — редкость
+    const rr=Math.random();
+    chatBurst=rr<0.72?1:(rr<0.95?2:3);
     // иногда вместо болтовни экипаж сам окликает человека
     if(userName&&Math.random()<0.22&&inviteUser()){
         chatBurst=0;
-        chatQuietUntil=now+40000+Math.random()*120000;
+        chatQuietUntil=now+60000+Math.random()*180000;
         return;
     }
     chatStepAt=now+400+Math.random()*1500;
@@ -4567,13 +4600,13 @@ function openDecision(kind){
     }
     pendingDecision={kind,options,stances,vote:null,deadline:Date.now()+18000};
     chatHeat(90000);
-    setTimeout(()=>crewSay('KEP',question+` Мне нужен ваш голос, не мой.`),400);
-    // экипаж высказывается по одному — коротко, по делу
-    const order=['ZAR','LUS','FIN','NUR'].sort(()=>Math.random()-0.5).slice(0,3);
+    setTimeout(()=>crewSay('KEP',question+` Мне нужен ваш голос, не мой.`,false,{urgent:true}),400);
+    // экипаж высказывается по одному — коротко, по делу (двое, не четверо)
+    const order=['ZAR','LUS','FIN','NUR'].sort(()=>Math.random()-0.5).slice(0,2);
     order.forEach((who,i)=>{
         const st=stances[who];
         const line=(POOL_VOTE[who]||{})[st]||'';
-        if(line)setTimeout(()=>crewSay(who,fillTemplate(line)),1800+i*2200);
+        if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2200+i*(3200+Math.random()*2400));
     });
     if(preVote&&preVote.kind===kind&&Date.now()-preVote.t<45000){
         pendingDecision.vote=preVote.id;
