@@ -4221,9 +4221,9 @@ function stateAnswer(t){
     if(aboutWay||has(t)(['где мы','где находимся','куда','далеко','скоро'])){
         if(state===ShipState.TRANSIT){
             const left=Math.max(0,100-Math.round(transitProgress));
-            return[{who:'ZAR',text:`Идём к ${D}, прошли ${Math.round(transitProgress)}% — осталось около ${left}% пути. Отклонение в допуске, пересчитаю на выходе.`}];
+            return[{who:'ZAR',text:`Курс — ${D}, прошли ${Math.round(transitProgress)}% — осталось около ${left}% пути. Отклонение в допуске, пересчитаю на выходе.`}];
         }
-        return[{who:'ZAR',text:`Стоим у ${(currentStation||'').replace('СТАНЦИЯ «','').replace('»','')}, борт в порядке. Дальше — к ${D}.`}];
+        return[{who:'ZAR',text:`Стоим у ${(currentStation||'').replace('СТАНЦИЯ «','').replace('»','')}, борт в порядке. Дальше курс — ${D}.`}];
     }
     if(has(t)(['топлив','бак','сколько лететь','хватит ли'])){
         return[{who:'ZAR',text:`Топливо ${Math.round(fuelPct)}%. До ${D} хватает с запасом на манёвры — если не геройствовать на тяге.`}];
