@@ -85,7 +85,7 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .hud{position:relative;flex:1;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--border);overflow:hidden;min-height:0}
 .hud::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,229,255,0.025),transparent 50%,rgba(0,229,255,0.01));pointer-events:none}
 .hud::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0.35}
-.hud.grow8{flex-grow:.8}.hud.grow16{flex-grow:1.6}.hud.grow18{flex-grow:1.8}.hud.grow22{flex-grow:2.2}
+.hud.grow8{flex-grow:.8}.hud.grow16{flex-grow:1.6}.hud.grow18{flex-grow:1.8}.hud.grow22{flex-grow:2.2}.hud.grow30{flex-grow:3.0}.hud.grow13{flex-grow:1.3}.hud.grow9{flex-grow:.9}
 
 .hdr{display:flex;align-items:center;padding:6px 12px;background:linear-gradient(180deg,rgba(0,229,255,0.07),transparent);border-bottom:1px solid rgba(0,229,255,0.1);gap:8px;flex-shrink:0}
 .pt{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:2px;flex:1;text-shadow:0 0 8px var(--cyan-glow)}
@@ -143,7 +143,10 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .nb-al{font-family:'Rajdhani',sans-serif;font-size:9px;font-weight:700;width:34px;text-align:right;flex-shrink:0;letter-spacing:.5px}
 
 /* ============ CREW CHAT ============ */
-.chat-log{flex:1;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:4px;padding:4px 0;min-height:0}
+.chat-log{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:4px;padding:4px 2px 4px 0;min-height:0;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.28) transparent}
+.chat-log::-webkit-scrollbar{width:5px}
+.chat-log::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.25);border-radius:3px}
+.chat-log::-webkit-scrollbar-track{background:transparent}
 .cmsg{display:flex;flex-direction:column;gap:1px;font-size:11.5px;line-height:1.4;opacity:0;transform:translateY(7px);transition:opacity .6s ease,transform .6s ease;padding:2px 6px 4px;border-left:2px solid rgba(0,229,255,0.12)}
 .cmsg.show{opacity:1;transform:none}
 .cmsg.sys{border-left-color:var(--purple-dim)}
@@ -158,6 +161,12 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .cphoto img{width:100%;height:auto;border:1px solid rgba(0,229,255,0.28);border-radius:3px;background:#01040c;box-shadow:0 0 12px rgba(0,229,255,0.06)}
 .cphoto-cap{font-size:9.5px;color:rgba(0,229,255,0.55);font-style:italic;letter-spacing:.3px}
 /* ---- пользователь как член экипажа ---- */
+.chat-name{display:flex;gap:5px;align-items:center;padding:7px 10px 2px;border-top:1px solid rgba(255,204,102,0.14);background:rgba(255,204,102,0.03);flex-shrink:0}
+.chat-name input{flex:1;min-width:0;background:rgba(20,16,4,0.7);border:1px solid rgba(255,204,102,0.30);border-radius:2px;color:rgba(255,238,210,0.95);font-family:'Rajdhani',sans-serif;font-size:12px;letter-spacing:.4px;padding:4px 7px;outline:none}
+.chat-name input::placeholder{color:rgba(255,204,102,0.45)}
+.chat-name button{background:rgba(255,204,102,0.14);border:1px solid rgba(255,204,102,0.45);color:var(--gold);font-family:'Orbitron',sans-serif;font-size:9.5px;font-weight:700;padding:4px 8px;border-radius:2px;cursor:pointer;letter-spacing:1px}
+.chat-name button:hover{background:rgba(255,204,102,0.25)}
+.chat-name.hidden{display:none}
 .chat-input{display:flex;gap:5px;align-items:center;padding:6px 10px 7px;border-top:1px solid rgba(0,229,255,0.10);background:rgba(0,229,255,0.015);flex-shrink:0}
 .chat-input input{flex:1;min-width:0;background:rgba(2,12,24,0.85);border:1px solid rgba(0,229,255,0.18);border-radius:2px;color:rgba(215,235,235,0.92);font-family:'Rajdhani',sans-serif;font-size:11.5px;letter-spacing:.3px;padding:4px 7px;outline:none;transition:border-color .2s ease,box-shadow .2s ease}
 .chat-input input::placeholder{color:rgba(0,229,255,0.30);letter-spacing:.4px}
@@ -173,6 +182,14 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 #chatWho:empty{display:none}
 .chat-input input.locked{border-color:rgba(255,204,102,0.25)}
 .chat-input input.locked::placeholder{color:rgba(255,204,102,0.45)}
+.chat-input input:disabled{opacity:.4;cursor:not-allowed}
+/* журнал тоже листается: старые записи не исчезают, их можно поднять */
+#journalLog{overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.25) transparent}
+#journalLog::-webkit-scrollbar{width:5px}
+#journalLog::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.22);border-radius:3px}
+#missionBox{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.22) transparent}
+#missionBox::-webkit-scrollbar{width:5px}
+#missionBox::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.22);border-radius:3px}
 
 /* ============ HOLD (cargo + passengers) ============ */
 .hold-fill-wrap{margin-bottom:7px}
@@ -198,6 +215,9 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .mis-type{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .mis-tbadge{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;letter-spacing:2px;padding:1px 7px;border:1px solid var(--gold);border-radius:2px;color:var(--gold)}
 .mis-progress{margin-top:auto;height:4px;background:rgba(0,229,255,0.07);border:1px solid rgba(0,229,255,0.1);border-radius:1px;overflow:hidden}
+.mis-note{font-size:9.5px;line-height:1.35;color:rgba(0,229,255,0.55);border-left:2px solid rgba(0,229,255,0.18);padding:2px 0 4px 6px;margin:2px 0 5px}
+.hold-summary{font-size:9px;color:rgba(0,229,255,0.5);letter-spacing:.3px;margin-bottom:4px;line-height:1.3}
+.hold-empty{font-size:10px;color:rgba(0,229,255,0.4);font-style:italic;padding:3px 2px}
 .mis-prog-fill{height:100%;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));transition:width 1s ease}
 
 /* ============ NEWS TICKER ============ */
@@ -295,30 +315,40 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 
 <!-- RIGHT BAY -->
 <div class="bays right">
-    <div class="hud grow22">
+    <div class="hud grow30">
         <div class="hdr"><span class="pt">Чат команды</span><span class="whoami" id="chatWho" title="Сменить имя"></span><span class="badge ok" id="crewBadge">В ЭФИРЕ</span></div>
         <div class="pb chat-log" id="crewChat"></div>
+        <div class="chat-name hidden" id="nameRow">
+            <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Твоё имя — как к тебе обращаться">
+            <button id="nameOk" type="button">ВОЙТИ</button>
+        </div>
         <div class="chat-input" id="chatInputRow">
-            <input id="chatInput" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Представься команде…">
+            <input id="chatInput" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Сначала представься команде" disabled>
             <button id="chatSend" type="button">→</button>
         </div>
     </div>
-    <div class="hud grow18">
+    <div class="hud grow13">
         <div class="hdr"><span class="pt">Грузо-пассажирский отсек</span><span class="badge ok" id="holdBadge">ФИКС</span></div>
         <div class="pb">
             <div class="hold-fill-wrap">
                 <div class="hold-fill-label"><span>ЗАГРУЖЕННОСТЬ</span><span id="holdFill">0%</span></div>
                 <div class="hold-bar"><div class="hold-fill" id="holdBar" style="width:0%"></div></div>
             </div>
+            <div class="hold-summary" id="holdSummary"></div>
             <div class="hold-log" id="holdList"></div>
         </div>
     </div>
-    <div class="hud grow8">
+    <div class="hud grow9">
         <div class="hdr"><span class="pt">Миссия</span><span class="badge ok" id="missBadge">ОЖИДАНИЕ</span></div>
         <div class="pb" id="missionBox">
             <div class="mis-row"><span class="mis-label">Цель</span><span class="mis-val" id="mType">—</span></div>
             <div class="mis-row" style="align-items:flex-start"><span class="mis-label">Задание</span><span class="mis-val small" id="mTask" style="white-space:normal;text-align:left;flex:1">Ожидание заказа…</span></div>
+            <div class="mis-note" id="mNote"></div>
             <div class="mis-row"><span class="mis-label">Пункт</span><span class="mis-val" id="mDest">—</span></div>
+            <div class="mis-row"><span class="mis-label">Дальность</span><span class="mis-val small" id="mDist">—</span></div>
+            <div class="mis-row"><span class="mis-label">Маршрут</span><span class="mis-val small" id="mRoute">—</span></div>
+            <div class="mis-row"><span class="mis-label">Загрузка</span><span class="mis-val small" id="mLoad">—</span></div>
+            <div class="mis-row"><span class="mis-label">Риск</span><span class="mis-val small" id="mRisk">—</span></div>
             <div class="mis-row"><span class="mis-label">Прибытие</span><span class="mis-val small" id="mEta">—</span></div>
             <div class="mis-row"><span class="mis-label">Награда</span><span class="mis-val" id="mReward">—</span></div>
             <div class="mis-progress"><div class="mis-prog-fill" id="mProg" style="width:0%"></div></div>
@@ -1554,16 +1584,12 @@ function pumpChat(){
     const el=document.createElement('div');
     el.className='cmsg show'+(EXTERN[job.who]?' ext':'');
     el.innerHTML=`<div class="cmsg-hdr"><span class="ctime">${t}</span><span class="cwho" style="color:${sp.color}">${sp.glyph} ${sp.full}</span></div><span class="ctext"></span>`;
-    // keep the incoming message INSIDE the visible area: if the feed is already
-    // taller than the panel, drop the oldest top messages synchronously before
-    // appending, so the newest one never lands below the panel edge. Measured by
-    // real content height: scrollHeight of a flex-end container equals its own
-    // clientHeight even while the feed is nearly empty, so it can't drive the
-    // trim here (that was hiding messages at half the panel).
-    const feedHigh=()=>{const a=log.firstElementChild,b=log.lastElementChild;return a&&b?(b.getBoundingClientRect().bottom-a.getBoundingClientRect().top):0};
-    while(feedHigh()>log.clientHeight&&log.children.length>2&&log.firstElementChild)log.removeChild(log.firstElementChild);
+    // лента прокручивается: держим низ, только если человек не ушёл читать
+    // историю выше — тогда новое не дёргает вид
+    const nearBottom=()=>log.scrollHeight-log.scrollTop-log.clientHeight<80;
     log.appendChild(el);
     trimFeed(log);
+    if(nearBottom())log.scrollTop=log.scrollHeight;
     const bad=el.querySelector('.ctext');
     lastSpeaker=job.who;
     chatRemember(job.who,job.text);
@@ -1571,16 +1597,15 @@ function pumpChat(){
     crewBadge.className='badge warn';crewBadge.textContent='ЕСТЬ НОВЫЕ';
     setTimeout(()=>{if(crewBadge.textContent==='ЕСТЬ НОВЫЕ'){crewBadge.className='badge ok';crewBadge.textContent='В ЭФИРЕ'}},8000);
     const finish=()=>{
-        trimFeed(log);
         chatTyping=false;
         activeChat=null;
         const pr=Date.now()<chatRushUntil;
-        if(chatQueue.length)setTimeout(pumpChat,pr?140:320);
+        if(chatQueue.length)setTimeout(pumpChat,pr?260:900+Math.random()*600);
     };
     const isPhoto=job.text.indexOf('<span class="cphoto">')===0;
     if(isPhoto){
         bad.innerHTML=job.text;
-        trimFeed(log);
+        stick();
         finish();
     }else{
         let i=0,done=false;
@@ -1596,49 +1621,28 @@ function pumpChat(){
         (function tick(){
             try{
                 if(done)return;
+                const stickNow=nearBottom();
                 i++;
                 bad.textContent=job.text.slice(0,i);
+                if(stickNow)log.scrollTop=log.scrollHeight;
                 if(i>=job.text.length){done=true;finish();return}
                 const rush=Date.now()<chatRushUntil;
-                setTimeout(tick,rush?8:26+Math.random()*34);
+                setTimeout(tick,rush?12:26+Math.random()*34);
             }catch(err){done=true;finish()}
         })();
     }
 }
 
-// Continuous feed. Chat (fromEnd=false): new entry at the bottom pushes the
-// rest up and the oldest ones slide out over the top edge (fade+remove).
-// Journal (fromEnd=true): new entry at the TOP pushes the rest down and the
-// oldest ones fade out over the bottom edge. Never a wipe-and-refill.
+// Лента больше не теряет старое: контейнер прокручивается, а DOM держит
+// запас записей (журнал — 200, чат — 300). Чистим только совсем старые
+// хвосты, чтобы браузер не разрастался бесконечно.
 function trimFeed(log,maxAbs,fromEnd){
     maxAbs=maxAbs||120;
-    const H=log.clientHeight;
-    const a=log.firstElementChild;
-    if(!H||!a)return;
-    const b=log.lastElementChild;
-    let over=b?(b.getBoundingClientRect().bottom-a.getBoundingClientRect().top)-H:0;
-    if(over<=0){ // safety hard cap anyway
-        while(log.children.length>maxAbs){
-            const t=fromEnd?log.lastElementChild:log.firstElementChild;
-            if(!t)break;
-            log.removeChild(t);
-        }
-        return;
-    }
-    let guard=0;
-    while(over>0&&guard++<maxAbs){
-        const far=fromEnd?log.lastElementChild:log.firstElementChild;
-        if(!far)break;
-        const h=far.offsetHeight;
-        if(far._removing){over-=h;continue}
-        if(over>=h-1||h===0){
-            far._removing=true;
-            const el=far;
-            el.style.transition='opacity .4s ease';
-            el.style.opacity='0';
-            setTimeout(()=>{if(el.parentNode===log)log.removeChild(el);trimFeed(log,maxAbs,fromEnd)},430);
-        }
-        over-=h;
+    const cap=maxAbs*3;
+    while(log.children.length>cap){
+        const t=fromEnd?log.lastElementChild:log.firstElementChild;
+        if(!t)break;
+        log.removeChild(t);
     }
 }
 
@@ -1731,12 +1735,13 @@ function arcRun(arc,baseMs){
  }
 }
 
-function idleConvo(){
+function idleConvo(allow){
+    const ok=w=>!allow||allow(w);
     // миниарки: причина всегда реальная (пассажир/истощённый контур кислорода)
-    if(passengerList.length&&Math.random()<0.18){arcRun(ARC_SAVED_PAX,3900);return}
-    if((typeof lifePct!=='undefined')&&lifePct<80&&Math.random()<0.14){arcRun(ARC_OXYGEN,4200);return}
+    if(passengerList.length&&ok('KEP')&&Math.random()<0.18){arcRun(ARC_SAVED_PAX,3900);return}
+    if((typeof lifePct!=='undefined')&&lifePct<80&&ok('NUR')&&Math.random()<0.14){arcRun(ARC_OXYGEN,4200);return}
     // a passenger aboard is worth a conversation of its own — causality checked
-    if(passengerList.length&&Math.random()<0.35){
+    if(passengerList.length&&ok('KEP')&&Math.random()<0.35){
         const p=passengerList[0].name;
         const paxChain=Math.floor(Math.random()*3);
         if(paxChain===0){
@@ -1756,17 +1761,24 @@ function idleConvo(){
         setTimeout(()=>crewSay('LUS',`Достал из запасов нормальное одеяло. Хочу, чтобы пассажир вспоминал «Меридиан» теплом, а не регламентом.`),7700);
         return;
     }
-    if(crewGradeFuel()&&Math.random()<0.4){
+    if(crewGradeFuel()&&ok('ZAR')&&Math.random()<0.4){
         const low=Math.round(fuelPct);
         setTimeout(()=>crewSay('ZAR',`Топливо ${Math.round(low||0)}% — считаю каждый литр до ${getDestPair()}. Без героизма на тяге.`),500);
         setTimeout(()=>crewSay('FIN',`На такой цифре любой экономист за голову возьмётся. Но мы дойдём — у меня запасной план на тройном малом.`),4100);
         setTimeout(()=>crewSay('KEP',`Сбавляем обороты. Пункт назначения не сбежит, а бак — единственный.`),7700);
         return;
     }
-    const b=BANTER[Math.floor(Math.random()*BANTER.length)];
+    // разговор в кубрике — только между теми, кто сейчас здесь
+    const bank=BANTER.filter(b=>ok(b[0]));
+    if(!bank.length)return;
+    const b=bank[Math.floor(Math.random()*bank.length)];
+    let at=500;
     for(let i=0;i<b.length;i+=2){
         const who=b[i],text=fillTemplate(b[i+1]);
-        if(text!==undefined)setTimeout(()=>crewSay(who,text),500+i*3800);
+        if(text!==undefined){
+            setTimeout(()=>crewSay(who,text),at);
+            at+=1600+Math.random()*3200;
+        }
     }
 }
 function crewGradeFuel(){return (typeof fuelPct!=='undefined')&&fuelPct<38}
@@ -2894,6 +2906,7 @@ function updateMissionPanel(){
         document.getElementById('mEta').textContent='—';
         document.getElementById('mReward').textContent='—';
         document.getElementById('mProg').style.width='0%';
+        ['mNote','mDist','mRoute','mLoad','mRisk'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent='—'});
         const mm=document.getElementById('missBadge');mm.className='badge ok';mm.textContent='ОЖИДАНИЕ';
         return;
     }
@@ -2910,6 +2923,21 @@ function updateMissionPanel(){
     else eta='—';
     document.getElementById('mEta').textContent=eta;
     document.getElementById('mReward').textContent=(m.reward>0?fmt(m.reward)+' КР':'—');
+    // подробности: что именно везём, каким маршрутом и чем рискуем
+    {
+        const noteEl=document.getElementById('mNote');
+        const holdT=holdWeight();
+        const free=Math.max(0,holdMax-holdT);
+        // строка нужна только когда есть что сказать сверх панели груза
+        noteEl.textContent=passengerList.length?('пассажиров: '+passengerList.length+' · свободно '+free+' т'):'';
+
+        document.getElementById('mDist').textContent=(legDist?legDist.toFixed(1)+' св.лет':'—');
+        document.getElementById('mRoute').textContent=(routeMode==='direct'?'напрямую — быстрее, риск выше':
+            routeMode==='detour'?'обход — дольше, спокойнее':'по плану, без развилки');
+        document.getElementById('mLoad').textContent=holdFillPct()+'% трюма';
+        const risk=(hullPct<60||shieldPct<30)?'высокий':(hullPct<80||shieldPct<55)?'средний':'низкий';
+        document.getElementById('mRisk').textContent=risk;
+    }
     let prog=0;
     if(state===ShipState.TRANSIT)prog=transitProgress;
     else if(state===ShipState.HYPERSPACE)prog=Math.min(100,Math.round(stateTimer/14*100));
@@ -2930,14 +2958,31 @@ function updateHold(){
     if(fl.textContent!==fill+'%')fl.textContent=fill+'%';
     const bar=document.getElementById('holdBar');
     if(bar.style.width!==fill+'%')bar.style.width=fill+'%';
+    const weight=holdWeight();
+    const sum=document.getElementById('holdSummary');
+    if(sum){
+        const parts=[];
+        parts.push(cargoList.length+' поз.');
+        parts.push(weight+' / '+holdMax+' т');
+        if(passengerList.length)parts.push('пассажиров '+passengerList.length);
+        parts.push('свободно '+Math.max(0,holdMax-weight)+' т');
+        const txt=parts.join(' · ');
+        if(sum.textContent!==txt)sum.textContent=txt;
+    }
     let html='';
     cargoList.forEach(c=>{
-        html+=`<div class="hitem ${c.cls}"><span class="hi-name">${c.name}</span><span class="hi-dest">${c.dest}</span><span class="hi-wt">${c.weight}т</span></div>`;
+        const share=holdMax?Math.round(c.weight/holdMax*100):0;
+        html+=`<div class="hitem ${c.cls}"><span class="hi-name">${c.name}</span><span class="hi-dest">${c.dest}</span><span class="hi-wt">${c.weight} т · ${share}%</span></div>`;
     });
     passengerList.forEach(p=>{
-        const tag=p.role.toUpperCase().slice(0,12);
         html+=`<div class="hitem passenger"><span class="hi-tag" style="color:var(--magenta)">👤</span><span class="hi-name">${p.name} — ${p.role}</span><span class="hi-dest">${p.dest}</span><span class="hi-wt">${fmt(p.fare)} КР</span></div>`;
     });
+    if(!html){
+        const hint=(state===ShipState.DOCKED)
+            ?'Трюм пуст. Смотрим, что предлагают на погрузке.'
+            :(state===ShipState.TRANSIT?'Трюм пуст: идём налегке — быстрее, но без заработка.':'Трюм пуст и закреплён. Ждём контракт.');
+        html=`<div class="hold-empty">${hint}</div>`;
+    }
     const el=document.getElementById('holdList');
     if(el.innerHTML!==html)el.innerHTML=html;
 }
@@ -3136,6 +3181,7 @@ function advanceShip(){
                     setState(ShipState.COMBAT);
                     stateTimer=0;
                     showBanner('БОЕВАЯ ТРЕВОГА — НЕИЗВЕСТНЫЕ КОРАБЛИ','red',6000);
+                    chatHeat(120000);
                     addJournal('БОЕВАЯ ТРЕВОГА: цель в секторе '+nextStation+', щиты в бой','bad');
                     combatTarget=nextStation;
                     // контакт сажаем в общую модель по курсу: на радаре и в списке
@@ -3573,6 +3619,7 @@ const TRANSIT_ERA={
 };
 let lastTransitKind='';
 function triggerTransitEvent(){
+    chatHeat(90000);
     const pool=TRANSIT_ERA[curEra()]||null;
     if(pool&&pool.length){
         const prev=lastTransitKind;
@@ -3798,8 +3845,24 @@ function mainLoop(){
 // ======================================================================
 //  UNEVEN CHAT ACTIVITY
 // ======================================================================
-let chatBurst=0;
-let chatQuietT=Date.now()+12000+Math.random()*18000;
+    let chatBurst=0;
+let chatStepAt=0;
+let chatQuietUntil=Date.now()+20000+Math.random()*40000;
+let chatHeatUntil=0;
+// «в кубрике» не все сразу: у людей есть вахта, работа и дела. Состав
+// меняется раз в 1.5–5 минут — от одного человека до всей команды.
+let onDuty=['KEP','ZAR','LUS'];
+let onDutyUntil=0;
+function refreshOnDuty(){
+    const all=['KEP','ZAR','LUS','FIN','NUR'];
+    const r=Math.random();
+    const n=r<0.40?1:r<0.75?2:r<0.93?3:5;
+    onDuty=all.slice().sort(()=>Math.random()-0.5).slice(0,n);
+    onDutyUntil=Date.now()+(90000+Math.random()*210000);
+}
+function allowedWho(w){return onDuty.indexOf(w)>=0}
+function chatHeat(ms){chatHeatUntil=Date.now()+(ms||45000)}
+
 let eraShown=0;
 function chatActivity(){
     const now=Date.now();
@@ -3809,39 +3872,55 @@ function chatActivity(){
         addJournal('МИР: эпоха «'+ERA_NAMES[_e]+'» — '+simWorldDays()+' день мира','good');
         showBanner('ЭПОХА «'+ERA_NAMES[_e]+'»','gold',5000);
     }
-    if(now<chatQuietT)return;
-    // экипаж сам иногда обращается к пользователю — разговор не по расписанию
-    if(userName&&Math.random()<0.22&&inviteUser()){chatQuietT=now+(9000+Math.random()*14000);return}
-    let r=Math.random();
+    if(onDutyUntil<now)refreshOnDuty();
+    // всплеск идёт: реплики внутри него, но с неровными паузами
     if(chatBurst>0){
+        if(now<chatStepAt)return;
         chatBurst--;
         emitChatLine();
-        chatQuietT=now+(1800+Math.random()*3600);
-    }else{
-        chatBurst=(r<0.15)?1+Math.floor(Math.random()*4):1+Math.floor(Math.random()*2);
-        chatQuietT=now+(12000+Math.random()*30000);
+        chatStepAt=now+1800+Math.random()*5200;
+        if(chatBurst===0)chatQuietUntil=chatStepAt+40000+Math.random()*140000;
+        return;
     }
+    if(now<chatQuietUntil)return;
+    // «жара»: событие на борту — есть что обсудить; тихий рейс — молчим
+    const heat=(now<chatHeatUntil)?0.95:
+        (state===ShipState.COMBAT||state===ShipState.EMERGENCY)?0.8:
+        state===ShipState.DOCKED?0.32:
+        state===ShipState.HYPERSPACE?0.18:0.30;
+    if(Math.random()>heat){
+        chatQuietUntil=now+12000+Math.random()*30000;
+        return;
+    }
+    chatBurst=Math.random()<0.55?1:(Math.random()<0.85?2:3);
+    // иногда вместо болтовни экипаж сам окликает человека
+    if(userName&&Math.random()<0.22&&inviteUser()){
+        chatBurst=0;
+        chatQuietUntil=now+40000+Math.random()*120000;
+        return;
+    }
+    chatStepAt=now+400+Math.random()*1500;
+    chatQuietUntil=now;   // шаг управляет очередью
 }
 function emitChatLine(){
     const r=Math.random();
     // near a station, external people can break into the channel
     const atStation=state===ShipState.DOCKED||state===ShipState.CARGO_OPS||state===ShipState.APPROACH||state===ShipState.DOCKING||state===ShipState.UNDOCKING;
-    if(atStation&&r<0.45){stationVoice();return}
-    // ~1 time out of 7 the crew shares a "photo" instead of text
-    if(r<0.12){
+    if(atStation&&r<0.30){stationVoice();return}
+    // «фото» делится тот, кто сейчас в кубрике
+    if(r<0.10){
         const kind=['meteor','star','cargo','lock','star','station'][Math.floor(Math.random()*6)];
-        const who=['FIN','LUS','NUR','FIN'][Math.floor(Math.random()*4)];
+        const who=onDuty[Math.floor(Math.random()*onDuty.length)];
         crewPhoto(who,kind);
         return;
     }
     // живая «жизнь вокруг»: слухи и пассажирские истории того же мира
-    if(r<0.30&&lifeChatLine()){return}
-    if(r<0.55)idleConvo();
-    else if(r<0.78&&chatNewsLine()){return}
-    // otherwise: build a fresh line from the current story state,
-    // but never echo a line that was already said in the recent window
-    for(let tries=0;tries<8;tries++){
-        const cand=genCrewLine();
+    if(r<0.26&&lifeChatLine()){return}
+    if(r<0.55&&idleConvo(allowedWho))return;
+    if(r<0.72&&chatNewsLine(allowedWho))return;
+    // иначе — свежая реплика по состоянию рейса, только от тех, кто на связи
+    for(let tries=0;tries<10;tries++){
+        const cand=genCrewLine(allowedWho);
         if(!cand)break;
         if(_fresh(cand.text)&&crewSay(cand.who,cand.text))return;
     }
@@ -3857,17 +3936,26 @@ function _fresh(text){
     return true;
 }
 function newsForEra(){const e=curEra(),pool=standaloneNews.filter(n=>!n.era||n.era===e);return pool.length?pool:standaloneNews}
-function chatNewsLine(){
+function chatNewsLine(allow){
+    const ok=w=>!allow||allow(w);
     const np=newsForEra();
     const n=np[Math.floor(Math.random()*np.length)];
-    const line=POOLS.news[Math.floor(Math.random()*POOLS.news.length)];
+    const pool=POOLS.news.filter(l=>ok(l.who));
+    if(!pool.length)return false;
+    const line=pool[Math.floor(Math.random()*pool.length)];
     const body=fillTemplate(line.text).replace('{t}',n.text).replace('{short}',n.text.replace(/[.]$/,''));
     return _fresh(body)&&crewSay(line.who,body);
 }
 // ---- SimDate: счёт мира, эпохи по книжному времени, разрыв 6->7 (~30 лет) ----
 // Окна [дней мира]: 1<180, 2<360, 3<540, 4<720, 5<990, 6<1260, 7<1450, 8<1620, 9>=1620
 const ERA_NAMES={1:'ЛЁД',2:'КАЛИБАН',3:'ВРАТА',4:'ИЛОС',5:'АРМИЯ',6:'БАБИЛОН',7:'ЛАКОНИЯ',8:'ТИАМАТ',9:'ЗАКРЫТИЕ'};
-function simWorldDays(){return Math.floor((Date.now()-simAnchor)/SIM_DAY_MS*RATE)+simBonus}
+// Календарь мира: день 0 — 1 сентября года запуска, дальше сутки идут один
+// к одному с реальными (1 сентября → 2 ноября = 62 игровых суток). Дата и
+// события не сбрасываются: они продолжаются с того же места в любой день.
+function simWorldDays(){
+    const base=new Date(simEpochYear,8,1,0,0,0).getTime();
+    return Math.max(0,Math.floor((Date.now()-base)/SIM_DAY_MS))+simBonus;
+}
 function curEra(){const x=simWorldDays();if(x<180)return 1;if(x<360)return 2;if(x<540)return 3;if(x<720)return 4;if(x<990)return 5;if(x<1260)return 6;if(x<1450)return 7;if(x<1620)return 8;return 9}
 function startNewWorld(){
     if(curEra()<6){addJournal('МИР: новая эра откроется после эпохи «БАБИЛОН» — сейчас рано','bad');showBanner('СЛИШКОМ РАНО','red',3500);return}
@@ -3913,9 +4001,14 @@ const GEN_TEMPLATES=[
  {who:'FIN',use:s=>s.cargo>0,t:'Курс до {port} — по шпаргалке, сигнал поймал: там буй менял мой знакомый.'},
  {who:'FIN',use:s=>!s.cargo,t:'Карту до {dest} пересмотрел: как в кино, без зажёванной плёнки. Проверьте меня.'}
 ];
-function genCrewLine(){
+function genCrewLine(allow){
  const s={pax:passengerList.length,cargo:cargoList.length,fuel:(typeof fuelPct!=='undefined')?fuelPct:100};
- const cand=GEN_TEMPLATES.filter(t=>t.use(s));
+ let cand=GEN_TEMPLATES.filter(t=>t.use(s));
+ if(allow){
+   const f=cand.filter(t=>allow(t.who));
+   if(!f.length)return null;
+   cand=f;
+ }
  const t=cand.length?cand[Math.floor(Math.random()*cand.length)]:GEN_TEMPLATES[0];
  return {who:t.who,text:fillTemplate(t.t)};
 }
@@ -4031,6 +4124,26 @@ function stateAnswer(t){
     return null;
 }
 
+// ---- «левые» темы: не блокируем, а возвращаем разговор в мир ----
+const OFFTOPIC=['футбол','хоккей','баскетбол','политик','президент','выборы','погода',
+    'сериал','тикток','ютуб','инстаграм','вконтакте','крипт','биткоин','анекдот',
+    'пицца','пиво','диван','квартир','дачу','футбольн'];
+function isOffTopic(t){return !!t&&OFFTOPIC.some(w=>t.indexOf(w)>=0)}
+const OFFTOPIC_REPLY=[
+    {who:'KEP',text:'{me}, не понимаю, о чём ты. У нас тут свои новости: топливо, курс, люди на борту. Давай про то, что нас касается.'},
+    {who:'ZAR',text:'В моих таблицах такого раздела нет. Спроси лучше про маршрут до {dest} — там я отвечу точно.'},
+    {who:'LUS',text:'Не слышала про такое. Зато слышу корму — она сегодня поёт ровно. Спроси про неё, если интересно.'},
+    {who:'FIN',text:'Похоже, это из другой галактики. У нас свои истории: буи, пирсы и люди, которые не успели на свой рейс.'},
+    {who:'NUR',text:'Тема вне моей базы. Вероятность, что она относится к рейсу до {dest}, — низкая. Рекомендую сменить тему.'}
+];
+function offTopicLines(){
+    const pool=OFFTOPIC_REPLY.slice();
+    const first=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+    const out=[first];
+    if(Math.random()<0.35&&pool.length)out.push(pool[Math.floor(Math.random()*pool.length)]);
+    return out;
+}
+
 function localCrewTurn(p){
     const t=_n(p.text);
     if(p.kind==='user'){
@@ -4039,7 +4152,9 @@ function localCrewTurn(p){
         if(has(t)(['спасибо','благодар']))return localSay('thanks',p);
         if(has(t)(['пока','до связи','отбой','ушел','ушёл']))return localSay('bye',p);
         if(q)return q;
-        if(t.indexOf('?')>=0)return[{who:'ZAR',text:`{me}, вопрос по делу. Прямо сейчас у меня нет точных данных — спрошу у ${Math.random()<0.5?'Финна':'Лючии'} и вернусь с ответом.`}];
+        // «левое» не развиваем: экипаж сам возвращает разговор в мир
+        if(isOffTopic(t))return offTopicLines();
+        if(t.indexOf('?')>=0)return[{who:'ZAR',text:`{me}, прямого ответа у меня нет — уточню у ${Math.random()<0.5?'Финна':'Лючии'} и вернусь. А пока: как тебе курс до {dest}?`}];
         return localSay('sceptic',p);
     }
     return null;
@@ -4073,10 +4188,10 @@ function userSay(text){
     el.innerHTML='<div class="cmsg-hdr"><span class="ctime">'+t+'</span><span class="cwho"></span></div><span class="ctext"></span>';
     el.querySelector('.cwho').textContent=userName||'ВЫ';
     el.querySelector('.ctext').textContent=text;
-    const feedHigh=()=>{const a=log.firstElementChild,b=log.lastElementChild;return a&&b?(b.getBoundingClientRect().bottom-a.getBoundingClientRect().top):0};
-    while(feedHigh()>log.clientHeight&&log.children.length>2&&log.firstElementChild)log.removeChild(log.firstElementChild);
+    const stick=log.scrollHeight-log.scrollTop-log.clientHeight<48;
     log.appendChild(el);
     trimFeed(log);
+    if(stick)log.scrollTop=log.scrollHeight;
     chatRemember('ME',text);
 }
 
@@ -4168,6 +4283,7 @@ function openDecision(kind){
         }
     }
     pendingDecision={kind,options,stances,vote:null,deadline:Date.now()+18000};
+    chatHeat(90000);
     setTimeout(()=>crewSay('KEP',question+` Мне нужен ваш голос, не мой.`),400);
     // экипаж высказывается по одному — коротко, по делу
     const order=['ZAR','LUS','FIN','NUR'].sort(()=>Math.random()-0.5).slice(0,3);
@@ -4295,56 +4411,67 @@ function inviteUser(){
 }
 
 // ---- проводка строки ввода ----
-// Пока человек не представился, строка чата — это поле имени, а не сообщение:
-// писать в эфир можно только своим именем, как и положено члену экипажа.
+// Имя вводится в отдельном поле НАД строкой сообщений. Пока имени нет,
+// строка сообщений заблокирована — писать в эфир может только свой.
 let namingMode=!userName;
 
 function applyChatMode(){
     const inp=document.getElementById('chatInput');
     const btn=document.getElementById('chatSend');
     const who=document.getElementById('chatWho');
+    const row=document.getElementById('nameRow');
+    const ni=document.getElementById('nameInput');
     if(who)who.textContent=userName?('вы: '+userName):'';
+    if(row)row.classList.toggle('hidden',!namingMode);
     if(!inp)return;
     if(namingMode){
-        inp.classList.add('locked');
-        inp.placeholder=userName?'Новое имя…':'Представься, чтобы писать…';
-        inp.maxLength=24;
-        if(btn)btn.textContent='ВОЙТИ';
+        inp.disabled=true;
+        inp.placeholder='Сначала представься команде';
+        if(btn)btn.disabled=true;
+        if(ni){ni.value='';ni.placeholder='Твоё имя — как к тебе обращаться';setTimeout(()=>ni.focus(),80)}
     }else{
-        inp.classList.remove('locked');
-        inp.placeholder='Написать команде…';
-        inp.maxLength=160;
-        if(btn)btn.textContent='→';
+        inp.disabled=false;
+        inp.placeholder='Написать команде… · Enter — отправить';
+        if(btn)btn.disabled=false;
     }
+}
+function submitName(){
+    const ni=document.getElementById('nameInput');
+    if(!ni)return;
+    const raw=ni.value;
+    const t=_n(raw);
+    const looksLikeChat=/^(привет|здравств|добрый|доброе|хай|здорово|алло|ку)/.test(t)
+        ||t.indexOf('?')>=0||t.split(/\s+/).length>2;
+    ni.value='';
+    if(!looksLikeChat&&setUserName(raw))return;
+    ni.placeholder='Здесь только имя — например, Иван';
+    setTimeout(()=>{if(namingMode)ni.placeholder='Твоё имя — как к тебе обращаться'},2600);
 }
 function submitChatInput(){
     const inp=document.getElementById('chatInput');
-    if(!inp)return;
+    if(!inp||namingMode)return;
     const raw=inp.value;
     inp.value='';
-    if(namingMode){
-        // поле имени — не поле сообщения: приветствие или фраза сюда не годится
-        const t=_n(raw);
-        const looksLikeChat=/^(привет|здравств|добрый|доброе|хай|здорово|алло|ку)/.test(t)
-            ||t.indexOf('?')>=0||t.split(/\s+/).length>2;
-        if(!looksLikeChat&&setUserName(raw))return;
-        inp.classList.add('locked');
-        inp.placeholder='Здесь только имя — например, Иван';
-        setTimeout(()=>{if(namingMode)applyChatMode()},2600);
-        return;
-    }
     try{onUserMessage(raw)}catch(e){console.error('chat input:',e)}
 }
 function setupChatInput(){
     const inp=document.getElementById('chatInput');
     const btn=document.getElementById('chatSend');
     const who=document.getElementById('chatWho');
-    if(!inp)return;
-    inp.addEventListener('keydown',e=>{
+    const ni=document.getElementById('nameInput');
+    const nOk=document.getElementById('nameOk');
+    if(inp)inp.addEventListener('keydown',e=>{
         if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submitChatInput()}
     });
     if(btn)btn.addEventListener('click',submitChatInput);
-    if(who)who.addEventListener('click',()=>{namingMode=true;applyChatMode();inp.focus()});
+    if(ni)ni.addEventListener('keydown',e=>{
+        if(e.key==='Enter'){e.preventDefault();submitName()}
+    });
+    if(nOk)nOk.addEventListener('click',submitName);
+    if(who)who.addEventListener('click',()=>{
+        if(!userName)return;
+        namingMode=true;applyChatMode();
+    });
     applyChatMode();
 }
 
@@ -4457,6 +4584,7 @@ requestAnimationFrame(tkTick);
 
 // start main loop
 mainLoop();
+window.__panelReady=1;
 </script>
 </body>
 </html>
