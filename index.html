@@ -4067,7 +4067,7 @@ try{userName=String(localStorage.getItem(LS_USER)||'').slice(0,24)}catch(e){}
 
 // Адрес прокси-воркера: сюда уходит контекст беседы, ключ модели остаётся
 // на сервере и в страницу не попадает. Пусто = локальный движок.
-const CREW_AI={url:'',model:'deepseek/deepseek-v4.1-flash'};
+const CREW_AI={url:'https://meridian-ai.yura-777-usa.workers.dev',model:'deepseek/deepseek-v4.1-flash'};
 const aiReady=()=>!!(CREW_AI.url||aiKey);
 // ключ модели, если человек вставил свой (лежит только в его браузере)
 let aiKey='';
@@ -4342,12 +4342,20 @@ function scheduleLines(lines){
 function crewTurn(p){
     if(!aiReady()){scheduleLines(localCrewTurn(p));return}
     // свой ключ — прямой запрос; прокси — тот же запрос через сервер
-    const req=CREW_AI.url
-        ? fetch(CREW_AI.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
-            .then(r=>{if(!r.ok)throw new Error('ai '+r.status);return r.json()}).then(j=>j.lines)
-        : aiTurn(p);
+    const req=CREW_AI.url ? aiViaProxy(p) : aiTurn(p);
     req.then(lines=>scheduleLines(lines&&lines.length?lines:localCrewTurn(p)))
        .catch(()=>scheduleLines(localCrewTurn(p)));
+}
+// прокси: один повтор на случай обрыва сети — иначе ответ молча падал бы в шаблон
+function aiViaProxy(p,tries){
+    tries=(tries===undefined)?2:tries;
+    return fetch(CREW_AI.url,{method:'POST',headers:{'Content-Type':'application/json','X-MP':'panel-1'},body:JSON.stringify(p)})
+        .then(r=>{if(!r.ok)throw new Error('ai '+r.status);return r.json()})
+        .then(j=>(j.lines&&j.lines.length)?j.lines:Promise.reject(new Error('empty')))
+        .catch(e=>{
+            if(tries>1)return new Promise(res=>setTimeout(res,500)).then(()=>aiViaProxy(p,tries-1));
+            throw e;
+        });
 }
 
 // ---- показ сообщения пользователя ----
