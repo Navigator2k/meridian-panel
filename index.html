@@ -186,6 +186,16 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .chat-input input.locked{border-color:rgba(255,204,102,0.25)}
 .chat-input input.locked::placeholder{color:rgba(255,204,102,0.45)}
 .chat-input input:disabled{opacity:.4;cursor:not-allowed}
+/* поле сообщения: редактируемое, чтобы имена-адресаты подсвечивались */
+.chat-edit{flex:1;min-width:0;max-height:64px;overflow-y:auto;background:rgba(2,12,24,0.85);border:1px solid rgba(0,229,255,0.18);border-radius:2px;color:rgba(215,235,235,0.92);font-family:'Rajdhani',sans-serif;font-size:11.5px;letter-spacing:.3px;padding:4px 7px;outline:none;line-height:1.35;scrollbar-width:thin}
+.chat-edit:focus{border-color:rgba(0,229,255,0.45);box-shadow:0 0 10px rgba(0,229,255,0.10)}
+.chat-edit:empty::before{content:attr(data-ph);color:rgba(0,229,255,0.30);letter-spacing:.4px}
+.chat-edit.locked{border-color:rgba(255,204,102,0.25);opacity:.5}
+.mention{color:var(--gold);background:rgba(255,204,102,0.12);border:1px solid rgba(255,204,102,0.28);border-radius:2px;padding:0 3px;white-space:nowrap}
+.cmsg-hdr .cwho{cursor:pointer}
+.cmsg-hdr .cwho:hover{text-decoration:underline dotted rgba(0,229,255,0.5)}
+.cmsg-hdr .cwho.me-self{cursor:default}
+.cmsg .ctext .mention{font-weight:600}
 /* журнал тоже листается: старые записи не исчезают, их можно поднять */
 #journalLog{overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.25) transparent}
 #journalLog::-webkit-scrollbar{width:5px}
@@ -326,7 +336,7 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
             <button id="nameOk" type="button">ВОЙТИ</button>
         </div>
         <div class="chat-input" id="chatInputRow">
-            <input id="chatInput" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Сначала представься команде" disabled>
+            <div id="chatInput" class="chat-edit locked" contenteditable="false" spellcheck="false" data-ph="Сначала представься команде"></div>
             <button id="chatSend" type="button">→</button>
         </div>
     </div>
@@ -1601,7 +1611,7 @@ function pumpChatJob(){
     const sp=CREW[job.who]||EXTERN[job.who]||CREW.KEP;
     const el=document.createElement('div');
     el.className='cmsg show'+(EXTERN[job.who]?' ext':'');
-    el.innerHTML=`<div class="cmsg-hdr"><span class="ctime">${t}</span><span class="cwho" style="color:${sp.color}">${sp.glyph} ${sp.full}</span></div><span class="ctext"></span>`;
+    el.innerHTML=`<div class="cmsg-hdr"><span class="ctime">${t}</span><span class="cwho" data-who="${job.who}" title="Вставить имя в сообщение" style="color:${sp.color}">${sp.glyph} ${sp.full}</span></div><span class="ctext"></span>`;
     // лента прокручивается: держим низ, только если человек не ушёл читать
     // историю выше — тогда новое не дёргает вид
     const nearBottom=()=>log.scrollHeight-log.scrollTop-log.clientHeight<80;
@@ -4459,7 +4469,8 @@ function userSay(text){
     el.className='cmsg show me';
     el.innerHTML='<div class="cmsg-hdr"><span class="ctime">'+t+'</span><span class="cwho"></span></div><span class="ctext"></span>';
     el.querySelector('.cwho').textContent=userName||'ВЫ';
-    el.querySelector('.ctext').textContent=text;
+    el.querySelector('.cwho').classList.add('me-self');
+    renderUserText(el.querySelector('.ctext'),text);
     const stick=log.scrollHeight-log.scrollTop-log.clientHeight<48;
     log.appendChild(el);
     trimFeed(log);
@@ -4697,13 +4708,16 @@ function applyChatMode(){
     if(row)row.classList.toggle('hidden',!namingMode);
     if(!inp)return;
     if(namingMode){
-        inp.disabled=true;
-        inp.placeholder='Сначала представься команде';
+        inp.setAttribute('contenteditable','false');
+        inp.classList.add('locked');
+        inp.setAttribute('data-ph','Сначала представься команде');
+        inp.innerHTML='';
         if(btn)btn.disabled=true;
         if(ni){ni.value='';ni.placeholder='Твоё имя — как к тебе обращаться';setTimeout(()=>ni.focus(),80)}
     }else{
-        inp.disabled=false;
-        inp.placeholder='Написать команде… · Enter — отправить';
+        inp.setAttribute('contenteditable','true');
+        inp.classList.remove('locked');
+        inp.setAttribute('data-ph','Написать команде… · Enter — отправить');
         if(btn)btn.disabled=false;
     }
 }
@@ -4722,9 +4736,69 @@ function submitName(){
 function submitChatInput(){
     const inp=document.getElementById('chatInput');
     if(!inp||namingMode)return;
-    const raw=inp.value;
-    inp.value='';
+    const raw=(inp.innerText||'').replace(/\u00a0/g,' ').replace(/\s+\n/g,'\n').trim();
+    inp.innerHTML='';
+    if(!raw)return;
     try{onUserMessage(raw)}catch(e){console.error('chat input:',e)}
+}
+
+// --- имена-адресаты: клик по имени в ленте вставляет его в сообщение ---
+function mentionWho(who){
+    const inp=document.getElementById('chatInput');
+    if(!inp||namingMode||!who||who==='ME')return;
+    const label=CREW_SHORT[who]||who;
+    const existing=inp.querySelector('.mention[data-who="'+who+'"]');
+    if(existing){
+        // повторный клик — убираем адресата из сообщения
+        const next=existing.nextSibling;
+        existing.remove();
+        if(next&&next.nodeType===3&&next.textContent.charAt(0)===' ')next.textContent=next.textContent.slice(1);
+        if(!inp.textContent.trim()&&!inp.querySelector('.mention'))inp.innerHTML='';
+        inp.focus();
+        return;
+    }
+    const span=document.createElement('span');
+    span.className='mention';
+    span.setAttribute('data-who',who);
+    span.setAttribute('contenteditable','false');
+    span.textContent=label;
+    const sel=window.getSelection();
+    const inside=sel&&sel.rangeCount&&inp.contains(sel.getRangeAt(0).startContainer);
+    if(inside){
+        const r=sel.getRangeAt(0);
+        r.deleteContents();
+        r.insertNode(span);
+        const space=document.createTextNode(' ');
+        span.parentNode.insertBefore(space,span.nextSibling);
+        r.setStartAfter(space);r.collapse(true);
+        sel.removeAllRanges();sel.addRange(r);
+    }else{
+        inp.appendChild(span);
+        inp.appendChild(document.createTextNode(' '));
+    }
+    inp.focus();
+    if(!inside){
+        const range=document.createRange();
+        range.selectNodeContents(inp);range.collapse(false);
+        const s2=window.getSelection();s2.removeAllRanges();s2.addRange(range);
+    }
+}
+
+// подсветка имён в уже отправленном сообщении
+function renderUserText(el,text){
+    el.textContent='';
+    const names=[];
+    Object.keys(CREW_SHORT).forEach(k=>names.push(CREW_SHORT[k]));
+    const re=new RegExp('('+names.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','g');
+    let last=0,m;
+    while((m=re.exec(text))){
+        if(m.index>last)el.appendChild(document.createTextNode(text.slice(last,m.index)));
+        const sp=document.createElement('span');
+        sp.className='mention';sp.textContent=m[1];
+        el.appendChild(sp);
+        last=m.index+m[1].length;
+    }
+    if(last<text.length)el.appendChild(document.createTextNode(text.slice(last)));
 }
 function setupChatInput(){
     const inp=document.getElementById('chatInput');
@@ -4735,6 +4809,10 @@ function setupChatInput(){
     if(inp)inp.addEventListener('keydown',e=>{
         if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submitChatInput()}
     });
+    // перенос строки по Shift+Enter не нужен: сообщение однострочное
+    if(inp)inp.addEventListener('keydown',e=>{
+        if(e.key==='Enter'&&e.shiftKey){e.preventDefault()}
+    });
     if(btn)btn.addEventListener('click',submitChatInput);
     if(ni)ni.addEventListener('keydown',e=>{
         if(e.key==='Enter'){e.preventDefault();submitName()}
@@ -4743,6 +4821,13 @@ function setupChatInput(){
     if(who)who.addEventListener('click',()=>{
         if(!userName)return;
         namingMode=true;applyChatMode();
+    });
+    // клик по имени автора в ленте — вставить/убрать адресата
+    document.addEventListener('click',e=>{
+        const el=e.target.closest('#crewChat .cmsg-hdr .cwho');
+        if(!el)return;
+        const w=el.getAttribute('data-who');
+        if(w)mentionWho(w);
     });
     // подключение модели: ключ хранится только в этом браузере
     const chip=document.getElementById('aiChip');
@@ -4807,6 +4892,9 @@ function restoreChat(lines){
         const whoEl=el.querySelector('.cwho');
         whoEl.textContent=(m.who==='ME')?(userName||'ВЫ'):(sp?sp.glyph+' '+sp.full:m.who);
         if(sp)whoEl.style.color=sp.color;
+        if(m.who==='ME')whoEl.classList.add('me-self');
+        else whoEl.setAttribute('data-who',m.who);
+        whoEl.title=m.who==='ME'?'':'Вставить имя в сообщение';
         const txtEl=el.querySelector('.ctext');
         const raw=String(m.text||'');
         if(m.photo){
