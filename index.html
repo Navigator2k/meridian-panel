@@ -180,6 +180,9 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 #chatWho{font-size:9px;color:var(--gold);letter-spacing:.5px;cursor:pointer;opacity:.8;border-bottom:1px dashed rgba(255,204,102,0.35);white-space:nowrap;font-family:'Rajdhani',sans-serif;font-weight:600}
 #chatWho:hover{opacity:1}
 #chatWho:empty{display:none}
+.ai-chip{font-size:8.5px;letter-spacing:.6px;font-family:'Orbitron',sans-serif;font-weight:700;color:rgba(0,229,255,0.45);border:1px solid rgba(0,229,255,0.22);border-radius:2px;padding:1px 5px;cursor:pointer;white-space:nowrap}
+.ai-chip:hover{color:var(--cyan);border-color:rgba(0,229,255,0.45)}
+.ai-chip.on{color:var(--green,#66ff99);border-color:rgba(102,255,153,0.4)}
 .chat-input input.locked{border-color:rgba(255,204,102,0.25)}
 .chat-input input.locked::placeholder{color:rgba(255,204,102,0.45)}
 .chat-input input:disabled{opacity:.4;cursor:not-allowed}
@@ -316,7 +319,7 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 <!-- RIGHT BAY -->
 <div class="bays right">
     <div class="hud grow30">
-        <div class="hdr"><span class="pt">Чат команды</span><span class="whoami" id="chatWho" title="Сменить имя"></span><span class="badge ok" id="crewBadge">В ЭФИРЕ</span></div>
+        <div class="hdr"><span class="pt">Чат команды</span><span class="ai-chip" id="aiChip" title="Подключить модель">ИИ: выкл</span><span class="whoami" id="chatWho" title="Сменить имя"></span><span class="badge ok" id="crewBadge">В ЭФИРЕ</span></div>
         <div class="pb chat-log" id="crewChat"></div>
         <div class="chat-name hidden" id="nameRow">
             <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Твоё имя — как к тебе обращаться">
@@ -1556,18 +1559,22 @@ function extSay(who,text){
     pumpChat();
     return true;
 }
-function crewSay(who,text,prio){
+function crewSay(who,text,prio,meta){
+    const isPhoto=!!(meta&&meta.photo);
     const key=who+'|'+text;
-    if(chatRecent.includes(key)||said.has(key))return false;
-    chatRecent.push(key);said.add(key);
-    if(chatRecent.length>80)chatRecent.shift();
+    // снимки не дедуплицируем: каждый кадр — свой, и повторов быть не должно
+    if(!isPhoto){
+        if(chatRecent.includes(key)||said.has(key))return false;
+        chatRecent.push(key);said.add(key);
+        if(chatRecent.length>80)chatRecent.shift();
+    }
     // ответ человеку — в начало очереди: он не должен ждать, пока экипаж
     // дотирает свои длинные реплики
     if(prio){
-        chatQueue.unshift({who,text});
+        chatQueue.unshift({who,text,meta});
         // и текущую реплику дописываем сразу — ответ придёт без паузы
-        if(activeChat)activeChat.complete();
-    }else chatQueue.push({who,text});
+        finishActiveChat();
+    }else chatQueue.push({who,text,meta});
     pumpChat();
     return true;
 }
@@ -1577,6 +1584,17 @@ function crewSay(who,text,prio){
 function pumpChat(){
     if(chatTyping||!chatQueue.length)return;
     chatTyping=true;
+    try{
+        pumpChatJob();
+    }catch(e){
+        // любая ошибка отрисовки не должна замораживать эфир навсегда
+        console.error('pumpChat error:',e);
+        chatTyping=false;
+        activeChat=null;
+        if(chatQueue.length)setTimeout(pumpChat,600);
+    }
+}
+function pumpChatJob(){
     const job=chatQueue.shift();
     const log=document.getElementById('crewChat');
     const t=new Date().toTimeString().slice(0,8);
@@ -1592,7 +1610,6 @@ function pumpChat(){
     if(nearBottom())log.scrollTop=log.scrollHeight;
     const bad=el.querySelector('.ctext');
     lastSpeaker=job.who;
-    chatRemember(job.who,job.text);
     const crewBadge=document.getElementById('crewBadge');
     crewBadge.className='badge warn';crewBadge.textContent='ЕСТЬ НОВЫЕ';
     setTimeout(()=>{if(crewBadge.textContent==='ЕСТЬ НОВЫЕ'){crewBadge.className='badge ok';crewBadge.textContent='В ЭФИРЕ'}},8000);
@@ -1602,35 +1619,49 @@ function pumpChat(){
         const pr=Date.now()<chatRushUntil;
         if(chatQueue.length)setTimeout(pumpChat,pr?260:900+Math.random()*600);
     };
-    const isPhoto=job.text.indexOf('<span class="cphoto">')===0;
+    const isPhoto=!!(job.meta&&job.meta.photo)||job.text.indexOf('<span class="cphoto">')===0;
     if(isPhoto){
         bad.innerHTML=job.text;
-        stick();
+        if(nearBottom())log.scrollTop=log.scrollHeight;
+        if(job.meta&&job.meta.photo)chatRemember(job.who,'[фото] '+(job.meta.cap||''),{photo:job.meta.photo,cap:job.meta.cap||''});
+        else chatRemember(job.who,'[фото]');
         finish();
     }else{
-        let i=0,done=false;
-        // реплику можно «дописать» мгновенно, если человек ждёт ответа:
-        // он не должен смотреть, как экипаж дотягивает чужую фразу
-        const complete=()=>{
-            if(done)return;
-            done=true;
-            try{bad.textContent=job.text}catch(e){}
-            finish();
+        // набор идёт по кадрам из mainLoop: таймеры браузер душит, когда
+        // вкладка не в фокусе, а анимационный цикл работает всегда
+        activeChat={
+            who:job.who,text:job.text,bad,log,i:0,done:false,nextAt:0,finish
         };
-        activeChat={complete};
-        (function tick(){
-            try{
-                if(done)return;
-                const stickNow=nearBottom();
-                i++;
-                bad.textContent=job.text.slice(0,i);
-                if(stickNow)log.scrollTop=log.scrollHeight;
-                if(i>=job.text.length){done=true;finish();return}
-                const rush=Date.now()<chatRushUntil;
-                setTimeout(tick,rush?12:26+Math.random()*34);
-            }catch(err){done=true;finish()}
-        })();
     }
+}
+
+// один шаг печати — вызывается из mainLoop
+function finishActiveChat(){
+    const a=activeChat;
+    if(!a||a.done)return;
+    a.i=a.text.length;
+    try{a.bad.textContent=a.text}catch(e){}
+    a.done=true;
+    chatRemember(a.who,a.text);
+    a.finish();
+}
+function chatTypeTick(){
+    const a=activeChat;
+    if(!a||a.done)return;
+    const now=Date.now();
+    if(now<a.nextAt)return;
+    const rush=now<chatRushUntil;
+    const wasStick=a.log&&(a.log.scrollHeight-a.log.scrollTop-a.log.clientHeight<80);
+    a.i=Math.min(a.text.length,a.i+(rush?2:1));
+    try{a.bad.textContent=a.text.slice(0,a.i)}catch(e){}
+    if(wasStick&&a.log)a.log.scrollTop=a.log.scrollHeight;
+    if(a.i>=a.text.length){
+        a.done=true;
+        chatRemember(a.who,a.text);
+        a.finish();
+        return;
+    }
+    a.nextAt=now+(rush?12:26+Math.random()*34);
 }
 
 // Лента больше не теряет старое: контейнер прокручивается, а DOM держит
@@ -2863,13 +2894,23 @@ function photoSvg(kind){
             '<path d="M0 150 Q80 132 160 150 T320 144 L320 200 L0 200 Z" fill="rgba(20,16,44,0.6)"/>'+
             '<circle cx="70" cy="150" r="2.4" fill="rgba(255,229,150,0.7)"/><circle cx="250" cy="166" r="1.6" fill="rgba(0,229,255,0.6)"/>';
     }
-    const src=encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}' viewBox='0 0 ${W} ${H}'><rect width='${W}' height='${H}' fill='#010409'/>${stars}${body}</svg>`);
+    // у каждого снимка свои случайные звёзды и лёгкий сдвиг — кадры не повторяются
+    let extra='';
+    for(let i=0;i<9;i++){
+        const px=(Math.random()*W)|0,py=(Math.random()*H)|0;
+        const r=(.4+Math.random()*1.3).toFixed(1);
+        const a=(.15+Math.random()*.5).toFixed(2);
+        extra+='<circle cx="'+px+'" cy="'+py+'" r="'+r+'" fill="rgba(200,230,255,'+a+')"/>';
+    }
+    const tint=['0,229,255','190,140,255','255,175,110','120,255,200'][Math.floor(Math.random()*4)];
+    const haze='<circle cx="'+((Math.random()*W)|0)+'" cy="'+((Math.random()*H)|0)+'" r="'+(40+Math.random()*70|0)+'" fill="rgba('+tint+',0.05)"/>';
+    const src=encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}' viewBox='0 0 ${W} ${H}'><rect width='${W}' height='${H}' fill='#010409'/>${haze}${stars}${extra}${body}</svg>`);
     return 'data:image/svg+xml;charset=utf-8,'+src;
 }
 function crewPhoto(who,kind){
     const caps=PHOTO_CAPS[kind]||PHOTO_CAPS.star;
     const cap=caps[Math.floor(Math.random()*caps.length)];
-    crewSay(who,'<span class="cphoto"><img src="'+photoSvg(kind)+'" alt="снимок"><span class="cphoto-cap">'+cap+'</span></span>');
+    crewSay(who,'<span class="cphoto"><img src="'+photoSvg(kind)+'" alt="снимок"><span class="cphoto-cap">'+cap+'</span></span>',false,{photo:kind,cap});
 }
 function updateStateBars(){
     const dots=[
@@ -3814,6 +3855,7 @@ let mainTick=0;
 function mainLoop(){
     mainTick++;
     try{
+        chatTypeTick();
         if(mainTick%2===0)drawTac();
         if(mainTick%40===0){updateClock();updateStardate();updateShipTime()}
         if(mainTick%80===0)updateNavList();
@@ -4025,13 +4067,79 @@ try{userName=String(localStorage.getItem(LS_USER)||'').slice(0,24)}catch(e){}
 
 // Адрес прокси-воркера: сюда уходит контекст беседы, ключ модели остаётся
 // на сервере и в страницу не попадает. Пусто = локальный движок.
-const CREW_AI={url:'',model:''};
-const aiReady=()=>!!CREW_AI.url;
+const CREW_AI={url:'',model:'deepseek/deepseek-v4.1-flash'};
+const aiReady=()=>!!(CREW_AI.url||aiKey);
+// ключ модели, если человек вставил свой (лежит только в его браузере)
+let aiKey='';
+try{aiKey=localStorage.getItem('meridianAIKey')||''}catch(e){}
+
+function crewPrompt(p){
+    const c=p.scene||{};
+    const bios={
+        KEP:'Игорь Рудин — капитан. Короткие, тёплые, окончательные фразы. Последнее слово за ним.',
+        ZAR:'Зарина Окейева — навигация и расчёты. Говорит цифрами, перепроверяет, не терпит неточностей.',
+        LUS:'Лючия Васкес — машины и корпус. Руки, переборки, кофе. Грубоватая, заботливая.',
+        FIN:'Финн Докер — пилот. Шутки, «как в кино», кофе, дороги и буи.',
+        NUR:'НУР-7 — бортовой интеллект. Вероятности, протоколы, сухое обаяние, наблюдения вместо оценок.'
+    };
+    const who=Object.keys(bios).map(k=>k+': '+bios[k]).join('\n');
+    const hist=(c.history||[]).map(m=>{
+        const name=m.who==='ME'?'Игрок':(CREW[m.who]?CREW[m.who].full:m.who);
+        return name+': '+m.text;
+    }).join('\n');
+    return [
+        'Ты — экипаж грузового корабля «Меридиан» во вселенной «Пространства» (The Expanse).',
+        'Говори по-русски, живо и по-человечески, как в реальном чате смены.',
+        'Правила:',
+        '1) Отвечай на то, что реально сказал игрок; не уходи от вопроса.',
+        '2) Не называй должности прямо — характер виден из речи.',
+        '3) Не выдумывай события, которых нет в обстановке; если не знаешь — скажи честно.',
+        '4) Если тема вне мира корабля (спорт, политика, быт Земли, интернет) — удивись и верни разговор к рейсу.',
+        '5) Реплики короткие: 1–2 предложения. Иногда 2–3 участника, иногда один.',
+        '6) Обращайся к игроку по имени, если оно есть.',
+        'Персонажи:\n'+who,
+        'Обстановка: '+JSON.stringify(c),
+        'Последние реплики:\n'+(hist||'(чат только начался)'),
+        'Игрок написал: '+JSON.stringify(p.text),
+        'Ответь строго JSON-массивом без пояснений: [{"who":"KEP|ZAR|LUS|FIN|NUR","text":"..."}]'
+    ].join('\n');
+}
+
+function aiTurn(p){
+    return fetch('https://openrouter.ai/api/v1/chat/completions',{
+        method:'POST',
+        headers:{
+            'Content-Type':'application/json',
+            'Authorization':'Bearer '+aiKey,
+            'X-Title':'Meridian panel'
+        },
+        body:JSON.stringify({
+            model:CREW_AI.model,
+            temperature:0.85,
+            max_tokens:260,
+            messages:[{role:'system',content:crewPrompt(p)}]
+        })
+    }).then(r=>{
+        if(!r.ok)throw new Error('ai '+r.status);
+        return r.json();
+    }).then(j=>{
+        const raw=(((j.choices||[])[0]||{}).message||{}).content||'';
+        const clean=String(raw).replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
+        let arr=null;
+        try{arr=JSON.parse(clean)}catch(e){}
+        if(!Array.isArray(arr)){
+            return [{who:onDuty[0]||'ZAR',text:clean.slice(0,240)}];
+        }
+        return arr.filter(x=>x&&x.text&&CREW[x.who]).map(x=>({who:x.who,text:String(x.text).slice(0,260)}));
+    });
+}
 
 // история беседы — общая память экипажа, чтобы модель видела разговор
 const chatHistory=[];
-function chatRemember(who,text){
-    chatHistory.push({who,text});
+function chatRemember(who,text,meta){
+    const entry={who,text:String(text||'')};
+    if(meta&&meta.photo){entry.photo=meta.photo;entry.cap=meta.cap||''}
+    chatHistory.push(entry);
     if(chatHistory.length>60)chatHistory.shift();
 }
 
@@ -4144,6 +4252,23 @@ function offTopicLines(){
     return out;
 }
 
+function stateShort(){
+    if(state===ShipState.COMBAT)return 'бой — нас прижали, но щиты держат';
+    if(state===ShipState.EMERGENCY)return 'авария, экипаж в работе';
+    if(state===ShipState.HYPERSPACE)return 'идём в варпе';
+    if(state===ShipState.TRANSIT)return 'в пути, до выхода '+Math.max(0,100-Math.round(transitProgress))+'%';
+    if(state===ShipState.DOCKED)return 'стоим у стыка, ждём погрузку';
+    if(state===ShipState.APPROACH||state===ShipState.DOCKING)return 'заходим в порт';
+    return 'идём по плану';
+}
+function lastJournalLine(){
+    const j=journal.length?journal[journal.length-1]:null;
+    if(!j)return '';
+    return String(j.text||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+}
+
+const EMO_WORDS=['плять','бля','блин','черт','чёрт','надоело','достало','бесит','устал','заколебал','как так','что за','твою'];
+
 function localCrewTurn(p){
     const t=_n(p.text);
     if(p.kind==='user'){
@@ -4151,13 +4276,57 @@ function localCrewTurn(p){
         if(has(t)(['привет','здравств','добрый','здорово','хай']))return localSay('greet',p);
         if(has(t)(['спасибо','благодар']))return localSay('thanks',p);
         if(has(t)(['пока','до связи','отбой','ушел','ушёл']))return localSay('bye',p);
+        // эмоции и раздражение — не повод шутить шаблоном
+        if(has(t)(EMO_WORDS))return emotionReply();
         if(q)return q;
+        if(has(t)(['что происходит','что случилось','что вообще','объясни что','что за шум','что у нас']))return situationReply();
         // «левое» не развиваем: экипаж сам возвращает разговор в мир
         if(isOffTopic(t))return offTopicLines();
-        if(t.indexOf('?')>=0)return[{who:'ZAR',text:`{me}, прямого ответа у меня нет — уточню у ${Math.random()<0.5?'Финна':'Лючии'} и вернусь. А пока: как тебе курс до {dest}?`}];
-        return localSay('sceptic',p);
+        if(t.indexOf('?')>=0)return questionFallback(p.text);
+        return smalltalkReply(p.text);
     }
     return null;
+}
+
+function emotionReply(){
+    const s=stateShort();
+    const pool=[
+        {who:'KEP',text:'{me}, выдохни. Мы в одной лодке: '+s+'. Что именно не так — говори прямо, разберёмся вместе.'},
+        {who:'LUS',text:'{me}, слышу тебя. Хочешь кофе — налью, хочешь помолчать — постоим рядом. Корма гудит ровно, а это половина спокойствия.'},
+        {who:'NUR',text:'{me}, фиксирую повышенный уровень раздражения. Факты: '+s+'. Остальное — интерпретация. Скажи, что нужно сделать, и я посчитаю.'},
+        {who:'ZAR',text:'{me}, понимаю. Обстановка: '+s+'. Если дело в цифрах — скажи, каких, и я пересчитаю при тебе.'}
+    ];
+    const a=pool[Math.floor(Math.random()*pool.length)];
+    const out=[a];
+    if(Math.random()<0.45){
+        const b=pool.filter(x=>x.who!==a.who)[Math.floor(Math.random()*(pool.length-1))];
+        if(b)out.push(b);
+    }
+    return out;
+}
+function situationReply(){
+    const lastJ=lastJournalLine();
+    const out=[{who:'NUR',text:'{me}, коротко: '+stateShort()+'. Корпус '+Math.round(hullPct)+'%, щиты '+Math.round(shieldPct)+'%, топливо '+Math.round(fuelPct)+'%.'}];
+    if(lastJ)out.push({who:'ZAR',text:'Последнее в журнале: '+lastJ});
+    else out.push({who:'KEP',text:'Без сюрпризов. Держимся вместе — остальное решим.'});
+    return out;
+}
+function questionFallback(raw){
+    const phrase=String(raw||'').replace(/[<>]/g,'').trim().slice(0,60);
+    const pool=[
+        {who:'ZAR',text:`{me}, про «${phrase}» точных данных у меня нет. Спроси про курс, топливо или груз — там отвечу цифрами.`},
+        {who:'NUR',text:`{me}, на вопрос «${phrase}» в моей базе нет записи. Уточни формулировку — и я дам вероятность, а не догадку.`},
+        {who:'FIN',text:`{me}, тут я пас: «${phrase}» — не мой профиль. Зато про дорогу до ${getDestPair()} расскажу всё.`}
+    ];
+    return [pool[Math.floor(Math.random()*pool.length)]];
+}
+function smalltalkReply(raw){
+    const pool=[
+        {who:'KEP',text:'{me}, услышал. Если это про рейс — говори, что не так, и решим. Если просто так — тоже нормально, смена длинная.'},
+        {who:'LUS',text:'{me}, я на связи. Скажи, что стряслось — или просто постой, корма гудит спокойно.'},
+        {who:'NUR',text:'{me}, сообщение принято без конкретики. Уточни тему: курс, груз, топливо, люди на борту?'}
+    ];
+    return [pool[Math.floor(Math.random()*pool.length)]];
 }
 
 // ---- слой к модели: один и тот же контракт для прокси и локального движка ----
@@ -4172,10 +4341,13 @@ function scheduleLines(lines){
 }
 function crewTurn(p){
     if(!aiReady()){scheduleLines(localCrewTurn(p));return}
-    fetch(CREW_AI.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
-        .then(r=>{if(!r.ok)throw new Error('ai '+r.status);return r.json()})
-        .then(j=>scheduleLines(j.lines))
-        .catch(()=>scheduleLines(localCrewTurn(p)));
+    // свой ключ — прямой запрос; прокси — тот же запрос через сервер
+    const req=CREW_AI.url
+        ? fetch(CREW_AI.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
+            .then(r=>{if(!r.ok)throw new Error('ai '+r.status);return r.json()}).then(j=>j.lines)
+        : aiTurn(p);
+    req.then(lines=>scheduleLines(lines&&lines.length?lines:localCrewTurn(p)))
+       .catch(()=>scheduleLines(localCrewTurn(p)));
 }
 
 // ---- показ сообщения пользователя ----
@@ -4472,6 +4644,21 @@ function setupChatInput(){
         if(!userName)return;
         namingMode=true;applyChatMode();
     });
+    // подключение модели: ключ хранится только в этом браузере
+    const chip=document.getElementById('aiChip');
+    if(chip){
+        const sync=()=>{chip.textContent=aiReady()?'ИИ: вкл':'ИИ: выкл';chip.classList.toggle('on',aiReady())};
+        chip.addEventListener('click',()=>{
+            let v=null;
+            try{v=prompt('Ключ OpenRouter (sk-or-…). Хранится только в этом браузере и никуда не отправляется, кроме OpenRouter.', '')}catch(e){}
+            if(v===null)return;
+            aiKey=String(v).trim();
+            try{aiKey?localStorage.setItem('meridianAIKey',aiKey):localStorage.removeItem('meridianAIKey')}catch(e){}
+            sync();
+            if(aiKey)crewSay('NUR','Модель подключена. Дальше отвечаю по существу, а не по шаблону.',true);
+        });
+        sync();
+    }
     applyChatMode();
 }
 
@@ -4489,7 +4676,14 @@ function snapshotGame(){
         mission:currentMission,cargo:cargoList,pax:passengerList,legLog,routeMode,
         combatEnemy,mainShown,simAnchor,simBonus,eraShown,
         journal:journal.slice(-30),
-        chat:chatHistory.slice(-14)
+        // фото храним как тип, а не как HTML: иначе сохранение раздувается
+        chat:chatHistory.slice(-14).map(m=>{
+            if(m.photo)return {who:m.who,text:'[фото] '+(m.cap||''),photo:m.photo,cap:m.cap||''};
+            const t=String(m.text||'');
+            return t.indexOf('<span class="cphoto">')===0
+                ?{who:m.who,text:'[фото]',photo:'star',cap:''}
+                :{who:m.who,text:t};
+        })
     };
 }
 function saveGame(){
@@ -4514,9 +4708,19 @@ function restoreChat(lines){
         const whoEl=el.querySelector('.cwho');
         whoEl.textContent=(m.who==='ME')?(userName||'ВЫ'):(sp?sp.glyph+' '+sp.full:m.who);
         if(sp)whoEl.style.color=sp.color;
-        el.querySelector('.ctext').textContent=m.text;
+        const txtEl=el.querySelector('.ctext');
+        const raw=String(m.text||'');
+        if(m.photo){
+            try{txtEl.innerHTML='<span class="cphoto"><img src="'+photoSvg(m.photo)+'" alt="снимок"><span class="cphoto-cap">'+(m.cap||'')+'</span></span>'}
+            catch(e){txtEl.textContent=raw}
+        }else if(raw.indexOf('<span class="cphoto">')===0){
+            // старые сохранения хранили фото как HTML — показываем снимком
+            txtEl.innerHTML=raw;
+        }else{
+            txtEl.textContent=raw;
+        }
         log.appendChild(el);
-        chatRemember(m.who,m.text);
+        chatRemember(m.who,raw,m.photo?{photo:m.photo,cap:m.cap}:null);
     });
     trimFeed(log);
 }
@@ -4569,7 +4773,7 @@ if(!_savedWorld){
 setupChatInput();
 
 // знакомство экипажа — только в первый раз, при следующих заходах смена уже идёт
-if(!_savedWorld)introChat();
+if(!_savedWorld){chatRush(120000);introChat();}
 
 // автосохранение: мир не должен откатываться назад
 setInterval(saveGame,5000);
