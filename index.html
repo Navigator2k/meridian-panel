@@ -5134,16 +5134,19 @@ function renderMentions(el,text){
     const uniq=[...new Set(names.filter(Boolean))].sort((a,b)=>b.length-a.length);
     if(!uniq.length){el.textContent=text;return}
     const body=uniq.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
-    const re=new RegExp('('+body+')([а-яё]{0,2})?','gi');
+    // имя подсвечиваем только целым словом: «Ник» не должен ловиться в «никого»
+    const re=new RegExp('(^|[^А-Яа-яЁёA-Za-z])('+body+')(?![А-Яа-яЁёA-Za-z])','gi');
     el.textContent='';
     let last=0,m;
     while((m=re.exec(text))){
-        if(m.index>last)el.appendChild(document.createTextNode(text.slice(last,m.index)));
+        const start=m.index+m[1].length;
+        if(start>last)el.appendChild(document.createTextNode(text.slice(last,start)));
         const sp=document.createElement('span');
         sp.className='mention';
-        sp.textContent=m[0];
+        sp.textContent=m[2];
         el.appendChild(sp);
         last=m.index+m[0].length;
+        if(m[0].length===0)re.lastIndex++;
     }
     if(last<text.length)el.appendChild(document.createTextNode(text.slice(last)));
 }
