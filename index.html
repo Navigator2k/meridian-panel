@@ -1766,9 +1766,9 @@ function poolNext(kind,exclude){
  return flyLine(kind)||{who:pool[0].who,text:keyOf(pool[0])};
 }
 function react(kind,delay){
- // реплику на событие пишет модель; пул — только если модель недоступна
+ // реплику на событие пишет модель; заготовок нет — при сбое эфир молчит
  setTimeout(()=>{
-   aiSay('event',{event:kind,scene:chatScene()},()=>legacyReact(kind,0),{base:300,step:1400,jitter:1000});
+   aiSay('event',{event:kind,scene:chatScene()},null,{base:300,step:1400,jitter:1000});
  },(delay===undefined?600:delay));
 }
 function legacyReact(kind,delay){
@@ -3266,7 +3266,7 @@ function advanceShip(){
                     fuelPct=Math.min(96,fuelPct+addF);
                     addJournal('ДОЗАПРАВКА: встречный танкер, +'+addF+'% топлива на борт','money');
                     showBanner('ПОПУТНАЯ ДОЗАПРАВКА','cyan',3500);
-                    crewSay(Math.random()<0.5?'LUS':'ZAR','Танкер на траверзе, беговая дозаправка. Успеваем, пока стыкуют вереницу барж.');
+                    aiMoment('встречный танкер на траверзе, идёт дозаправка на ходу');
                 }else if(rr<0.3&&!legLog.cargo&&transitProgress>=42&&transitProgress<80&&Math.random()<0.7){
                     legLog.cargo=true;
                     const cw=6+Math.floor(Math.random()*14);
@@ -3274,7 +3274,7 @@ function advanceShip(){
                     updateHold();
                     addJournal('К ТРАССЕ: зацеплен дрейфующий контейнер, +'+cw+' т. Инвентаризация при погрузке','money');
                     showBanner('ДРЕЙФ-ГРУЗ: КОНТЕЙНЕР НА БУКСИРЕ','cyan',3500);
-                    crewSay('FIN','Поймал сигнальный буй — контейнер без владельца. Захватываю, пристроим у станции.');
+                    aiMoment('на трассе зацепили дрейфующий контейнер без владельца, взяли на буксир');
                 }else if(legLog.paced%3===0&&Math.random()<0.8){
                     const notes=[
                         'НАВИГАЦИЯ: держим крейсерский ход, отметка на траверзе сверена','МАШИННОЕ: продувка фильтров, обход вентилей — штатно',
@@ -3754,9 +3754,9 @@ function triggerTransitEvent(){
             setState(ShipState.EMERGENCY);
             crewReact(ev.pool,600);
             updateStateBars();
-            setTimeout(()=>crewSay(Math.random()<0.5?'LUS':'ZAR',ev.go),2400);
+            setTimeout(()=>aiMoment('авария на борту: '+ev.j+' — экипаж в работе, что говорят сейчас'),2400);
             setTimeout(()=>{addJournal('ЭКИПАЖ: '+ev.j.replace('АВАРИЯ: ','')+' — локализовано, работы в секторе')},8000);
-            setTimeout(()=>crewSay(Math.random()<0.5?'NUR':'LUS',ev.done),8500);
+            setTimeout(()=>aiMoment('авария локализована: '+ev.done+' — короткая реплика по факту'),8500);
             setTimeout(()=>{addJournal(ev.done,'good');if(elBad&&elBad.parentNode)elBad.classList.add('resolved')},8800);
             setTimeout(()=>{lifePct=Math.min(100,lifePct+15);reactorPct=Math.min(100,reactorPct+15);updateStateBars()},9000);
         } else {
@@ -3792,9 +3792,9 @@ function triggerTransitEvent(){
         setState(ShipState.EMERGENCY);
         crewReact(hz.pool,600);
         updateStateBars();
-        setTimeout(()=>crewSay(Math.random()<0.5?'LUS':'ZAR',hz.go),2400);
+        setTimeout(()=>aiMoment('авария на борту: '+hz.j+' — экипаж в работе, что говорят сейчас'),2400);
         setTimeout(()=>{addJournal('ЭКИПАЖ: '+hz.j.replace('АВАРИЯ: ','')+' — локализовано, работы в секторе')},8000);
-        setTimeout(()=>crewSay(Math.random()<0.5?'NUR':'LUS',hz.done),8500);
+        setTimeout(()=>aiMoment('авария локализована: '+hz.done+' — короткая реплика по факту'),8500);
         setTimeout(()=>{addJournal(hz.done,'good')},8800);
         setTimeout(()=>{lifePct=Math.min(100,lifePct+15);reactorPct=Math.min(100,reactorPct+15);updateStateBars()},9000);
     }
@@ -4553,6 +4553,12 @@ function aiSay(kind,payload,fallback,opts){
         })
         .catch(()=>{ if(fallback)fallback(); done(); });
 }
+
+// реплика «по моменту»: свободное описание ситуации уходит в модель.
+// Заготовок нет: если модель недоступна — эфир молчит.
+function aiMoment(text,opts){
+    aiSay('event',{event:text,scene:chatScene()},null,opts||{base:400,step:1400,jitter:1000});
+}
 function crewTurn(p){
     if(!aiReady()){scheduleLines(localCrewTurn(p));return}
     // свой ключ — прямой запрос; прокси — тот же запрос через сервер
@@ -4906,11 +4912,11 @@ function resolveDecision(){
             updateHold();updateMissionPanel();
             addJournal('КОНТРАКТ: отклонён — решили не брать ('+lab+', '+how+')','bad');
             showBanner('ОТКАЗ ОТ КОНТРАКТА','red',4500);
-            setTimeout(()=>crewSay('KEP','Решили — значит, решили. Идём порожняком, зато своим ходом.',false,{urgent:true}),700);
+            setTimeout(()=>aiMoment('команда отказалась от контракта, идём порожняком'),700);
         }else{
             addJournal('КОНТРАКТ: принят — '+lab+' ('+how+')','good');
             showBanner('КОНТРАКТ ПРИНЯТ','cyan',4000);
-            setTimeout(()=>crewSay('KEP','Принято. Грузимся и выходим, пока окно открыто.',false,{urgent:true}),700);
+            setTimeout(()=>aiMoment('команда взяла контракт, грузимся и выходим, пока окно открыто'),700);
         }
     }else if(d.kind==='fuel'){
         if(winner==='now'){
@@ -4932,12 +4938,12 @@ function resolveDecision(){
             credits+=reward;
             addJournal('ПОМОЩЬ: отклонились к аварийному судну — экипаж спасён, +'+fmt(reward)+' КР, минус время','good');
             showBanner('ЭКИПАЖ СПАСЁН','gold',4500);
-            setTimeout(()=>crewSay('LUS','Двое живых, один в шоке. Заводите в каюту, я воздух дам.',false,{urgent:true}),1400);
+            setTimeout(()=>aiMoment('подошли к аварийному судну, на борту двое живых, один в шоке'),1400);
             updateCredits();
         }else{
             addJournal('ПОМОЩЬ: сигнал бедствия оставлен без ответа — решение команды','bad');
             showBanner('ПРОШЛИ МИМО','red',3800);
-            setTimeout(()=>crewSay('NUR','Фиксирую: сигнал остался без ответа. Вероятность, что это была ловушка, — 0.38. Это не оправдание, это данные.',false,{urgent:true}),1200);
+            setTimeout(()=>aiMoment('прошли мимо сигнала бедствия, решение команды — не вмешиваться'),1200);
         }
     }else if(d.kind==='jettison'){
         if(winner==='drop'){
@@ -4947,13 +4953,13 @@ function resolveDecision(){
             updateHold();updateStateBars();
             addJournal('ГРУЗ: часть трюма сброшена, масса меньше — уходим легче','bad');
             showBanner('ГРУЗ СБРОШЕН','red',4200);
-            setTimeout(()=>crewSay('LUS','Понеслись легче. Жалко коробок, но корпус мне дороже.',false,{urgent:true}),800);
+            setTimeout(()=>aiMoment('сбросили часть груза, корабль идёт легче'),800);
         }else{
             hullPct=Math.max(10,hullPct-5);
             updateStateBars();
             addJournal('ГРУЗ: держим всё — корпус получил лишнее','bad');
             showBanner('ИДЁМ С ГРУЗОМ','cyan',3800);
-            setTimeout(()=>crewSay('KEP','Держим груз. Корпус примет, а заказчик дождётся.',false,{urgent:true}),800);
+            setTimeout(()=>aiMoment('удержали груз, корпус получил лишнюю нагрузку'),800);
         }
     }else if(d.kind==='upgrade'){
         if(winner==='engines'){
@@ -4989,7 +4995,7 @@ function resolveDecision(){
             addJournal('МАРШРУТ: обход — теряем время, зато целее корпус ('+how+')','good');
             showBanner('КУРС: В ОБХОД','cyan',4200);
         }
-        setTimeout(()=>crewSay('FIN',winner==='direct'?'Держитесь. Идём короткой дорогой — она у меня нарисована красиво.':'Обходим. Дорога длиннее, зато без зажёванной плёнки.',false,{urgent:true}),700);
+        setTimeout(()=>aiMoment(winner==='direct'?'идём напрямую через опасный сектор':'идём в обход, теряем время, зато целее корпус'),700);
     }
     if(d.vote&&userName){
         setTimeout(()=>crewSay('KEP',`${userName}, твой голос услышан — и он был не лишним.`,false,{urgent:true}),2400);
