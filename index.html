@@ -4214,8 +4214,15 @@ function localSay(intent,ctx){
 // ответы по существу — из реального состояния корабля
 function stateAnswer(t){
     const D=getDestPair();
-    if(has(t)(['где мы','где находимся','куда','далеко','скоро'])){
-        if(state===ShipState.TRANSIT)return[{who:'ZAR',text:`Идём к ${D}, прошли ${Math.round(transitProgress)}%. Отклонение в допуске, пересчитаю на выходе.`}];
+    // «сколько нам до Цереры», «долго ещё», «далеко ли» — это вопрос о пути
+    const aboutWay=/сколько\s+(нам\s+)?(еще\s+|ещё\s+)?(до|лететь|идти|пилить)/.test(t)
+        ||/как\s+далеко|далеко\s+ли|далеко\s+еще|далеко\s+ещё/.test(t)
+        ||/сколько\s+(часов|суток|дней|минут)\s/.test(t);
+    if(aboutWay||has(t)(['где мы','где находимся','куда','далеко','скоро'])){
+        if(state===ShipState.TRANSIT){
+            const left=Math.max(0,100-Math.round(transitProgress));
+            return[{who:'ZAR',text:`Идём к ${D}, прошли ${Math.round(transitProgress)}% — осталось около ${left}% пути. Отклонение в допуске, пересчитаю на выходе.`}];
+        }
         return[{who:'ZAR',text:`Стоим у ${(currentStation||'').replace('СТАНЦИЯ «','').replace('»','')}, борт в порядке. Дальше — к ${D}.`}];
     }
     if(has(t)(['топлив','бак','сколько лететь','хватит ли'])){
