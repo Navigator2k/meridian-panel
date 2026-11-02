@@ -4517,9 +4517,9 @@ function smalltalkReply(raw){
 
 // ---- слой к модели: один и тот же контракт для прокси и локального движка ----
 function scheduleLines(lines,opts){
-    const arr=(lines||[]).filter(l=>l&&l.who&&l.text).slice(0,3);
-    if(!arr.length)return;
     const o=opts||{};
+    const arr=(lines||[]).filter(l=>l&&l.who&&l.text).slice(0,o.limit||3);
+    if(!arr.length)return;
     if(o.rush!==false)chatRush(14000);
     const prio=(o.prio!==false);
     const base=(o.base===undefined?500:o.base);
@@ -4741,7 +4741,7 @@ function openDecision(kind){
             const line=(POOL_VOTE[who]||{})[stances[who]]||'';
             if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2400+i*(3200+Math.random()*2400));
         });
-    },{base:500,step:1800,jitter:1200,prio:true});
+    },{base:500,step:1800,jitter:1200,prio:true,limit:6});
     // отдельный вопрос лично игроку — тут имя уместно
     if(userName&&Math.random()<0.4){
         const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
