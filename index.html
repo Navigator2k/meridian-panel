@@ -4073,6 +4073,20 @@ const aiReady=()=>!!(CREW_AI.url||aiKey);
 let aiKey='';
 try{aiKey=localStorage.getItem('meridianAIKey')||''}catch(e){}
 
+function syncAiChip(){
+    const chip=document.getElementById('aiChip');
+    if(!chip)return;
+    chip.textContent=aiReady()?'ИИ: вкл':'ИИ: выкл';
+    chip.classList.toggle('on',aiReady());
+}
+function aiChipNote(txt,ms){
+    const chip=document.getElementById('aiChip');
+    if(!chip)return;
+    chip.textContent=txt;
+    chip.classList.remove('on');
+    setTimeout(syncAiChip,ms||8000);
+}
+
 function crewPrompt(p){
     const c=p.scene||{};
     const bios={
@@ -4232,7 +4246,69 @@ function stateAnswer(t){
     return null;
 }
 
-// ---- «левые» темы: не блокируем, а возвращаем разговор в мир ----
+// ---- обращение по имени: спрашивают конкретного человека, он и отвечает ----
+const CREW_NAMES={
+    KEP:['игорь','рудин','капитан'],
+    ZAR:['зарина','окейева'],
+    LUS:['лючия','васкес'],
+    FIN:['финн','докер'],
+    NUR:['нур','нур-7','нур7']
+};
+function addressedTo(t){
+    for(const k in CREW_NAMES){
+        for(const n of CREW_NAMES[k]){
+            if(t.indexOf(n)===0)return k;
+            if(t.indexOf(n+',')>=0||t.indexOf(n+' ')>0)return k;
+        }
+    }
+    return null;
+}
+const MOOD_RE=/настроени|как дела|как ты|как сам|держишься|устал|выспал|как жизнь|что новог/;
+const MOOD={
+    KEP:['Держусь, {me}. Смена длинная, но команда ровная — значит, и я ровный.','Нормально, {me}. Пока корма гудит ровно, настроение у меня рабочее.'],
+    ZAR:['Ровно. Цифры сходятся — значит, и настроение сходится.','Рабочее, {me}. Пересчитала смену: всё в допуске, включая меня.'],
+    LUS:['Как корма: гудит ровно — и мне хорошо. Кофе будешь?','Устала, но злая — значит, ещё поработаю. Ты как?'],
+    FIN:['Отличное! Дорога есть, кофе есть, никто не жалуется. Жить можно.','Бодрое, {me}. Придумал новый маршрут — половина правда, половина красиво.'],
+    NUR:['Настроение — параметр без единицы измерения. Если по-вашему: рабочее.','Стабильно, {me}. Биоформы вокруг в допуске, значит и я доволен. Это наблюдение.']
+};
+const NOT_MY={
+    KEP:'Это не ко мне — тут {who} точнее скажет.',
+    ZAR:'Не моя часть, {me}: за это отвечает {who}.',
+    LUS:'Я по железу, а не по этому. Спроси {who_acc}.',
+    FIN:'Тут я пас, {me}. Это к {who_dat}.',
+    NUR:'Вне моего профиля. Точнее ответит {who}.'
+};
+const HONEST={
+    KEP:'Не знаю, {me}. Скажу честно: не знаю — и это лучше, чем гадать.',
+    ZAR:'Данных нет, {me}. Гадать не буду: скажи, что именно нужно.',
+    LUS:'Не в курсе. Но если что-то греется или стучит — это ко мне.',
+    FIN:'Понятия не имею, {me}. Зато знаю короткую дорогу — хочешь, расскажу.',
+    NUR:'Данных недостаточно, {me}. Уточни формулировку — тогда дам вероятность, а не догадку.'
+};
+const CREW_SHORT={KEP:'Игорь',ZAR:'Зарина',LUS:'Лючия',FIN:'Финн',NUR:'НУР-7'};
+const CREW_ACC={KEP:'Игоря',ZAR:'Зарину',LUS:'Лючию',FIN:'Финна',NUR:'НУР-7'};
+const CREW_DAT={KEP:'Игорю',ZAR:'Зарине',LUS:'Лючии',FIN:'Финну',NUR:'НУР-7'};
+function directedReply(who,t){
+    if(MOOD_RE.test(t)){
+        const pool=MOOD[who]||MOOD.KEP;
+        return [{who,text:pool[Math.floor(Math.random()*pool.length)]}];
+    }
+    if(t.indexOf('?')>=0){
+        const a=stateAnswer(t);
+        if(a&&a.length){
+            if(a[0].who!==who){
+                const line=(NOT_MY[who]||'Это не ко мне, {me}.')
+                    .replace('{who_acc}',CREW_ACC[a[0].who]||'специалиста')
+                    .replace('{who_dat}',CREW_DAT[a[0].who]||'специалисту')
+                    .replace('{who}',CREW_SHORT[a[0].who]||'экипаж');
+                return [{who,text:line},{who:a[0].who,text:a[0].text}];
+            }
+            return a;
+        }
+        return [{who,text:HONEST[who]||HONEST.NUR}];
+    }
+    return null;
+}
 const OFFTOPIC=['футбол','хоккей','баскетбол','политик','президент','выборы','погода',
     'сериал','тикток','ютуб','инстаграм','вконтакте','крипт','биткоин','анекдот',
     'пицца','пиво','диван','квартир','дачу','футбольн'];
@@ -4278,6 +4354,12 @@ function localCrewTurn(p){
         if(has(t)(['пока','до связи','отбой','ушел','ушёл']))return localSay('bye',p);
         // эмоции и раздражение — не повод шутить шаблоном
         if(has(t)(EMO_WORDS))return emotionReply();
+        // спросили конкретного человека — отвечает он, а не «система»
+        const to=addressedTo(t);
+        if(to){
+            const d=directedReply(to,t);
+            if(d)return d;
+        }
         if(q)return q;
         if(has(t)(['что происходит','что случилось','что вообще','объясни что','что за шум','что у нас']))return situationReply();
         // «левое» не развиваем: экипаж сам возвращает разговор в мир
@@ -4312,11 +4394,10 @@ function situationReply(){
     return out;
 }
 function questionFallback(raw){
-    const phrase=String(raw||'').replace(/[<>]/g,'').trim().slice(0,60);
     const pool=[
-        {who:'ZAR',text:`{me}, про «${phrase}» точных данных у меня нет. Спроси про курс, топливо или груз — там отвечу цифрами.`},
-        {who:'NUR',text:`{me}, на вопрос «${phrase}» в моей базе нет записи. Уточни формулировку — и я дам вероятность, а не догадку.`},
-        {who:'FIN',text:`{me}, тут я пас: «${phrase}» — не мой профиль. Зато про дорогу до ${getDestPair()} расскажу всё.`}
+        {who:'ZAR',text:'{me}, по этому у меня точных данных нет. Спроси про курс, топливо или груз — там отвечу цифрами.'},
+        {who:'NUR',text:'{me}, вопрос вне моей базы. Уточни, что именно нужно, — тогда дам вероятность, а не догадку.'},
+        {who:'FIN',text:'{me}, тут я пас. Зато про дорогу до '+getDestPair()+' расскажу всё, что знаю.'}
     ];
     return [pool[Math.floor(Math.random()*pool.length)]];
 }
@@ -4354,6 +4435,8 @@ function aiViaProxy(p,tries){
         .then(j=>(j.lines&&j.lines.length)?j.lines:Promise.reject(new Error('empty')))
         .catch(e=>{
             if(tries>1)return new Promise(res=>setTimeout(res,500)).then(()=>aiViaProxy(p,tries-1));
+            // видно, что модель не ответила, а не «экипаж вдруг отупел»
+            aiChipNote('ИИ: сбой',9000);
             throw e;
         });
 }
@@ -4655,17 +4738,16 @@ function setupChatInput(){
     // подключение модели: ключ хранится только в этом браузере
     const chip=document.getElementById('aiChip');
     if(chip){
-        const sync=()=>{chip.textContent=aiReady()?'ИИ: вкл':'ИИ: выкл';chip.classList.toggle('on',aiReady())};
         chip.addEventListener('click',()=>{
             let v=null;
             try{v=prompt('Ключ OpenRouter (sk-or-…). Хранится только в этом браузере и никуда не отправляется, кроме OpenRouter.', '')}catch(e){}
             if(v===null)return;
             aiKey=String(v).trim();
             try{aiKey?localStorage.setItem('meridianAIKey',aiKey):localStorage.removeItem('meridianAIKey')}catch(e){}
-            sync();
+            syncAiChip();
             if(aiKey)crewSay('NUR','Модель подключена. Дальше отвечаю по существу, а не по шаблону.',true);
         });
-        sync();
+        syncAiChip();
     }
     applyChatMode();
 }
