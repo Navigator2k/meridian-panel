@@ -4269,7 +4269,8 @@ function passingShip(){
         event:'в пути рядом идёт попутный борт '+passingShipName()+', его капитан выходит на связь: короткий обмен по курсу'+
               (g.world?'; он может упомянуть событие эпохи: '+g.world:'')+
               (g.local?'; или местное событие: '+g.local:''),
-        scene:chatScene()
+        scene:chatScene(),
+        prefer:'SHIP'
     },null,{base:300,step:1600,jitter:800,prio:false});
     // канал с попутным бортом не вечен: через минуту-две он уходит
     setTimeout(()=>{guestLeave('SHIP')},45000+Math.random()*45000);
@@ -4357,7 +4358,8 @@ function stationVoice(){
         event:'подход к станции '+st+', стыковочный пирс '+berth+': диспетчер ведёт швартовку'+
               (g.local?'; между делом он может упомянуть местное событие: '+g.local:'')+
               (g.world?'; а также событие эпохи: '+g.world:''),
-        scene:chatScene()
+        scene:chatScene(),
+        prefer:'DPH'
     },null,{base:400,step:1800,jitter:900});
 }
 // generate a dialogue line from the CURRENT story state — never repeated,
