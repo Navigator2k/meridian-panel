@@ -257,6 +257,8 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 /* системная строка канала: вход и выход участников */
 .cmsg.sys{display:flex;flex-direction:row;justify-content:center;border-left-color:transparent;background:none;padding:3px 0 3px 0}
 .csys{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:.4px;color:rgba(140,175,195,0.72);font-style:italic}
+.syswho{cursor:pointer;border-bottom:1px dotted rgba(140,175,195,0.45)}
+.syswho:hover{color:rgba(255,204,102,0.95);border-bottom-color:rgba(255,204,102,0.6)}
 .cmsg .ctext .mention{font-weight:600}
 /* журнал тоже листается: старые записи не исчезают, их можно поднять */
 #journalLog{overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.25) transparent}
@@ -1767,23 +1769,25 @@ function guestEnter(who){
     if(!info||!info.tag)return false;
     if(chatGuests.some(g=>g.who===who))return false;
     chatGuests.push({who:who,label:info.full,tag:info.tag||''});
-    chatSys('ПОДКЛЮЧИЛСЯ К КАНАЛУ — '+info.full+' '+(info.tag||''));
+    chatSys('ПОДКЛЮЧИЛСЯ К КАНАЛУ — '+info.full+' '+(info.tag||''),
+        '<span class="csys">ПОДКЛЮЧИЛСЯ К КАНАЛУ — <span class="syswho" data-who="'+who+'" title="Выбрать адресатом">'+info.full+'</span> '+(info.tag||'')+'</span>');
     return true;
 }
 function guestLeave(who){
     const g=chatGuests.filter(x=>x.who===who)[0];
     if(!g)return false;
     chatGuests=chatGuests.filter(x=>x.who!==who);
-    chatSys('ОТКЛЮЧИЛСЯ ОТ КАНАЛА — '+g.label+' '+(g.tag||''));
+    chatSys('ОТКЛЮЧИЛСЯ ОТ КАНАЛА — '+g.label+' '+(g.tag||''),
+        '<span class="csys">ОТКЛЮЧИЛСЯ ОТ КАНАЛА — <span class="syswho" data-who="'+who+'" title="Выбрать адресатом">'+g.label+'</span> '+(g.tag||'')+'</span>');
     return true;
 }
 function guestsLeaveAll(){
     chatGuests.slice().forEach(g=>guestLeave(g.who));
 }
 // системная строка канала (вход/выход, служебные отметки)
-function chatSys(text){
-    if(!text)return;
-    chatQueue.push({sys:true,text:String(text)});
+function chatSys(text,html){
+    if(!text&&!html)return;
+    chatQueue.push({sys:true,text:String(text||''),html:html||''});
     pumpChat();
 }
 function extSay(who,text){
@@ -1893,7 +1897,8 @@ function pumpChatJob(){
     if(job.sys){
         const s=document.createElement('div');
         s.className='cmsg sys show';
-        s.innerHTML='<span class="csys">'+job.text+'</span>';
+        if(job.html)s.innerHTML=job.html;
+        else s.innerHTML='<span class="csys">'+job.text+'</span>';
         log.appendChild(s);
         trimFeed(log);
         if(!(chatDetachedAt&&Date.now()-chatDetachedAt<5000))log.scrollTop=log.scrollHeight;
@@ -3609,7 +3614,7 @@ function advanceShip(){
                     setState(ShipState.HYPERSPACE);
                     stateTimer=0;
                     showBanner('ГИПЕРПРЫЖОК — '+legDist.toFixed(1)+' св.лет','cyan',5000);
-                    addJournal('ГИПЕРПРИВОД: вход в варп, фаза набрана — маршрут свернут в нуль-сферу','good');
+                    addJournal('ВАРП: вход — прыжок на '+legDist.toFixed(1)+' св.лет, экипаж по местам, поле держит','good');
                     crewReact('hyperIn');
                 }else if(transitProgress>=88&&!legLog.stay){legLog.stay=true}
             }
@@ -3621,7 +3626,7 @@ function advanceShip(){
                 setState(ShipState.APPROACH);
                 stateTimer=0;
                 hyperActive=false;
-                addJournal('ГИПЕРПРИВОД: выход из варпа, калибровка сенсоров');
+                addJournal('ВАРП: выход — сенсоры калибруются, курс восстановлен');
                 crewReact('hyperOut');
             }
             break;
@@ -5895,31 +5900,10 @@ function renderWithNames(el,text){
 // имена в репликах экипажа тоже подсвечиваются: и члены команды, и игрок
 function renderMentions(el,text){
     if(!el)return;
-    const names=[];
-    // полные имена из базы — основной вариант; короткие — на случай, если текст пришёл со смены
-    Object.keys(CREW).forEach(k=>names.push(CREW[k].full));
-    Object.keys(CREW_SHORT).forEach(k=>names.push(CREW_SHORT[k]));
-    chatGuests.forEach(g=>{if(g.label)names.push(g.label)});
-    try{paxActors().forEach(p=>names.push(p.full))}catch(e){}
-    if(userName)names.push(userName);
-    const uniq=[...new Set(names.filter(Boolean))].sort((a,b)=>b.length-a.length);
-    if(!uniq.length){el.textContent=text;return}
-    const body=uniq.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
-    // имя подсвечиваем только целым словом: «Ник» не должен ловиться в «никого»
-    const re=new RegExp('(^|[^А-Яа-яЁёA-Za-z])('+body+')(?![А-Яа-яЁёA-Za-z])','gi');
-    el.textContent='';
-    let last=0,m;
-    while((m=re.exec(text))){
-        const start=m.index+m[1].length;
-        if(start>last)el.appendChild(document.createTextNode(text.slice(last,start)));
-        const sp=document.createElement('span');
-        sp.className='mention';
-        sp.textContent=m[2];
-        el.appendChild(sp);
-        last=m.index+m[0].length;
-        if(m[0].length===0)re.lastIndex++;
-    }
-    if(last<text.length)el.appendChild(document.createTextNode(text.slice(last)));
+    // упоминание — не адресат: имя в тексте не подсвечиваем и не делаем кликабельным.
+    // Адресата выбирают кликом по имени автора в заголовке сообщения.
+    el.textContent=text;
+    return;
 }
 function setupChatInput(){
     const inp=document.getElementById('chatInput');
@@ -5952,7 +5936,7 @@ function setupChatInput(){
     });
     // клик по имени автора в ленте — вставить/убрать адресата
     document.addEventListener('click',e=>{
-        const el=e.target.closest('#crewChat .cmsg-hdr .cwho');
+        const el=e.target.closest('#crewChat .cmsg-hdr .cwho, #crewChat .cmsg.sys .syswho');
         if(!el)return;
         const w=el.getAttribute('data-who');
         if(w)mentionWho(w);
