@@ -5233,12 +5233,13 @@ function postVoteResults(d,votes,busy,lab){
         rows.push(nm+' — «'+labOf(votes[k])+'»');
     });
     const FEMALE={ZAR:1,LUS:1};
-    (busy||[]).forEach(k=>{rows.push(((CREW[k]&&CREW[k].full)||k)+(FEMALE[k]?' — воздержалась':' — воздержался'))});
+    (busy||[]).forEach(k=>{rows.push(((CREW[k]&&CREW[k].full)||k)+(FEMALE[k]?' — была занята':' — был занят'))});
     if(!(d&&d.vote)&&userName)rows.push(userName+' — воздержался');
     const counts={};
     Object.keys(votes).forEach(k=>{const v=votes[k];counts[v]=(counts[v]||0)+1});
     const summary=Object.keys(counts).map(id=>labOf(id)+': '+counts[id]).join(', ');
-    chatSys('ИТОГ ГОЛОСОВАНИЯ — '+lab+' ('+summary+', воздержались: '+((busy||[]).length)+')\n'+rows.join('\n'));
+    const busyN=(busy||[]).length;
+    chatSys('ИТОГ ГОЛОСОВАНИЯ — '+lab+' ('+summary+(busyN?(', заняты и не участвовали: '+busyN):'')+')\n'+rows.join('\n'));
 }
 function openDecision(kind){
     if(pendingDecision)return;
@@ -5260,9 +5261,13 @@ function openDecision(kind){
         }
     }
     const q=spec.ask[Math.floor(Math.random()*spec.ask.length)];
-    // часть экипажа может быть занята и не успеть к голосованию — это воздержавшиеся
-    const busy=[];
-    Object.keys(stances).forEach(w=>{if(w!=='KEP'&&Math.random()<0.22){busy.push(w);delete stances[w]}});
+    // голосование видят только те, кто сейчас в чате: от одного до трёх человек
+    // могут быть заняты на корабле и в голосовании не участвуют
+    const crewAll=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0);
+    const others=crewAll.filter(w=>w!=='KEP');
+    const busyCount=Math.max(1,Math.min(3,1+Math.floor(Math.random()*3)));
+    const busy=others.slice().sort(()=>Math.random()-0.5).slice(0,Math.min(busyCount,others.length));
+    busy.forEach(w=>{delete stances[w]});
     pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+10000};
     chatHeat(90000);
     // кто выскажется — от двух человек до всех, кто на связи
