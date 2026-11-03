@@ -1760,9 +1760,21 @@ function extSay(who,text){
     pumpChat();
     return true;
 }
+// чистая телеметрия — не для эфира: такие строки уходят в бортжурнал.
+// Признак: технические термины + цифры и нет вопроса/предложения, что с этим делать.
+function looksLikeTelemetry(t){
+    const s=String(t||'');
+    if(s.indexOf('?')>=0)return false;
+    const tech=/(дистанц|скорост|курс[а-яё]*\s|орбит|процент|топлив|корпус|щит|реактор|двигател|маневр|стыковк|коррекц)/i;
+    const nums=/\d/.test(s);
+    const talk=/(посмотри|скажи|как думаешь|давай|нужно|нужен|предлага|вопрос|решай|что делать|может|стоит|успева|рискн|давай)/i;
+    return tech.test(s)&&nums&&!talk.test(s);
+}
 function crewSay(who,text,prio,meta){
     const isPhoto=!!(meta&&meta.photo);
     const urgent=!!(meta&&meta.urgent);
+    // техническая констатация — в бортжурнал, не в живой чат
+    if(!isPhoto&&looksLikeTelemetry(text)){try{addJournal('СИСТЕМА: '+text)}catch(e){};return false}
     // фон не частит: между обычными репликами держим паузу, тревоги — вне лимита
     if(!prio&&!urgent&&!isPhoto){
         const now=Date.now();
@@ -4443,7 +4455,9 @@ function crewPrompt(p){
         '3) Не выдумывай события, которых нет в обстановке; если не знаешь — скажи честно.',
         '4) Если тема вне мира корабля (спорт, политика, быт Земли, интернет) — удивись и верни разговор к рейсу.',
         '5) Реплики короткие: 1–2 предложения. Иногда 2–3 участника, иногда один.',
-        '6) Обращайся к игроку по имени, если оно есть.',
+        '6) Обращайся к игроку по имени, только если реплика адресована ему; ко всем — без обращения.',
+        '7) Имя пиши полностью, как в списке персонажей, без кодов (не «KEP», не «FIN»). К себе не обращайся.',
+        '8) Чат живой: не пересказывай телеметрию (скорость, курс, дистанция, проценты) — это бортжурнал. О технике говори только если есть вопрос или что решать.',
         'Персонажи:\n'+who,
         'Обстановка: '+JSON.stringify(c),
         'Последние реплики:\n'+(hist||'(чат только начался)'),
@@ -5533,10 +5547,20 @@ function submitChatInput(){
 }
 
 // --- имена-адресаты: клик по имени в ленте вставляет его в сообщение ---
+// как участник называется в адресате: полное имя из базы,
+// у внешних — только имя, без квадратных скобок с ролью
+function mentionLabel(who){
+    if(!who||who==='ME')return userName||'ВЫ';
+    if(CREW[who])return CREW[who].full;
+    const ai=actorInfo(who);
+    if(ai&&ai.full)return ai.full;
+    return mentionLabelFallback(who);
+}
+function mentionLabelFallback(who){return String(who||'');}
 function mentionWho(who){
     const inp=document.getElementById('chatInput');
     if(!inp||namingMode||!who||who==='ME')return;
-    const label=CREW_SHORT[who]||who;
+    const label=mentionLabel(who);
     const existing=inp.querySelector('.mention[data-who="'+who+'"]');
     if(existing){
         // повторный клик — убираем адресата из сообщения
@@ -5584,7 +5608,11 @@ function renderWithNames(el,text){
 function renderMentions(el,text){
     if(!el)return;
     const names=[];
+    // полные имена из базы — основной вариант; короткие — на случай, если текст пришёл со смены
+    Object.keys(CREW).forEach(k=>names.push(CREW[k].full));
     Object.keys(CREW_SHORT).forEach(k=>names.push(CREW_SHORT[k]));
+    chatGuests.forEach(g=>{if(g.label)names.push(g.label)});
+    try{paxActors().forEach(p=>names.push(p.full))}catch(e){}
     if(userName)names.push(userName);
     const uniq=[...new Set(names.filter(Boolean))].sort((a,b)=>b.length-a.length);
     if(!uniq.length){el.textContent=text;return}
