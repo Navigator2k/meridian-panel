@@ -232,6 +232,12 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .cmsg-hdr .cwho{cursor:pointer}
 .cmsg-hdr .cwho:hover{text-decoration:underline dotted rgba(0,229,255,0.5)}
 .cmsg-hdr .cwho.me-self{cursor:default}
+/* пометка участника: кто это в эфире (пассажир, диспетчер станции, чужой борт) */
+.ctag{margin-left:auto;font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;letter-spacing:.7px;color:rgba(255,210,138,0.78);border:1px solid rgba(255,210,138,0.30);border-radius:2px;padding:1px 4px;white-space:nowrap;background:rgba(255,210,138,0.05)}
+.cmsg.ext .ctag{color:rgba(255,210,138,0.85);border-color:rgba(255,210,138,0.38)}
+/* системная строка канала: вход и выход участников */
+.cmsg.sys{display:flex;flex-direction:row;justify-content:center;border-left-color:transparent;background:none;padding:3px 0 3px 0}
+.csys{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:.4px;color:rgba(140,175,195,0.72);font-style:italic}
 .cmsg .ctext .mention{font-weight:600}
 /* журнал тоже листается: старые записи не исчезают, их можно поднять */
 #journalLog{overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.25) transparent}
@@ -1632,9 +1638,67 @@ const EXTERN={
     FIL:{full:'Филип Инарос',color:'#e0c8a0',glyph:'◬'},
     GHL:{full:'оператор гаснущих рукавов',color:'#a8d8b8',glyph:'◬'}
 };
+// ---- участники канала: экипаж, пассажиры, внешние (диспетчеры, капитаны бортов) ----
+// У каждого участника — своя пометка, чтобы было видно, кто это в эфире.
+const EXT_TAG={
+    DPH:'ДИСПЕТЧЕР СТАНЦИИ',LCH:'ЛОЦМАН СТАНЦИИ',CUS:'СЛУЖБА СТАНЦИИ',
+    BDZ:'ВНЕШНИЙ',MDV:'ВНЕШНИЙ',AGR:'ВНЕШНИЙ',ONN:'СЛУЖБА ООН',UN1:'КОМАНДИР ООН',
+    MZO:'НАБЛЮДАТЕЛЬ',RCE:'СНАБЖЕНЕЦ',RVK:'РАЗВЕДЧИК',LCY:'СВЯЗИСТ',
+    RFG:'КУРЬЕР',DSV:'ВНЕШНИЙ',TSO:'СЛУЖБА ТС',DRM:'ГЛАВА ТС СОЮЗА',
+    KOR:'НАУКА ЛАКОНИИ',TEZ:'ВНЕШНИЙ',TNK:'ОХОТНИК',FIL:'ВНЕШНИЙ',GHL:'ОПЕРАТОР',
+    CPT:'КАПИТАН БОРТА'
+};
+// пассажиры на борту — они тоже могут говорить в канале
+function paxActors(){
+    return passengerList.slice(0,4).map((p,i)=>({
+        who:'PAX'+(i+1),full:p.name,tag:'ПАССАЖИР'+(p.role?' · '+p.role:''),
+        color:'#ffd9a0',glyph:'◉'
+    }));
+}
+function actorInfo(who){
+    if(!who)return null;
+    if(who==='ME')return {full:userName||'ВЫ',color:'#ffcc66',glyph:'▸',me:true};
+    // капитан чужого борта: имя зависит от того, кто рядом
+    if(who==='CPT'){
+        const nm=(typeof combatEnemy!=='undefined'&&combatEnemy&&combatEnemy.name)?('капитан борта '+combatEnemy.name):'капитан чужого борта';
+        return {full:nm,color:'#ffb0b0',glyph:'◬',tag:'КАПИТАН БОРТА',ext:true};
+    }
+    const pax=paxActors().filter(p=>p.who===who)[0];
+    if(pax)return pax;
+    if(CREW[who])return {full:CREW[who].full,color:CREW[who].color,glyph:CREW[who].glyph,tag:''};
+    if(EXTERN[who])return {full:EXTERN[who].full,color:EXTERN[who].color,glyph:EXTERN[who].glyph,tag:EXT_TAG[who]||'ВНЕШНИЙ',ext:true};
+    return null;
+}
+// кто сейчас «в канале» из внешних: вход и выход отмечаем сообщением
+let chatGuests=[];
+function guestEnter(who){
+    const info=actorInfo(who);
+    if(!info||!info.tag)return false;
+    if(chatGuests.some(g=>g.who===who))return false;
+    chatGuests.push({who:who,label:info.full});
+    chatSys(info.full+' вошёл в чат');
+    return true;
+}
+function guestLeave(who){
+    const g=chatGuests.filter(x=>x.who===who)[0];
+    if(!g)return false;
+    chatGuests=chatGuests.filter(x=>x.who!==who);
+    chatSys(g.label+' покинул чат');
+    return true;
+}
+function guestsLeaveAll(){
+    chatGuests.slice().forEach(g=>guestLeave(g.who));
+}
+// системная строка канала (вход/выход, служебные отметки)
+function chatSys(text){
+    if(!text)return;
+    chatQueue.push({sys:true,text:String(text)});
+    pumpChat();
+}
 function extSay(who,text){
     const key=who+'|'+text;
     if(chatRecent.includes(key)||said.has(key))return false;
+    if(actorInfo(who)&&actorInfo(who).tag)guestEnter(who);
     chatRecent.push(key);said.add(key);
     if(chatRecent.length>80)chatRecent.shift();
     chatQueue.push({who,text});
@@ -1659,6 +1723,7 @@ function crewSay(who,text,prio,meta){
     }
     // ответ человеку — в начало очереди: он не должен ждать, пока экипаж
     // дотирает свои длинные реплики
+    {const ai=actorInfo(who);if(ai&&ai.tag)guestEnter(who);}
     if(prio){
         chatQueue.unshift({who,text,meta});
         // и текущую реплику дописываем сразу — ответ придёт без паузы
@@ -1700,10 +1765,25 @@ function pumpChatJob(){
     const job=chatQueue.shift();
     const log=document.getElementById('crewChat');
     const t=new Date().toTimeString().slice(0,8);
-    const sp=CREW[job.who]||EXTERN[job.who]||CREW.KEP;
+    // системная строка: вход/выход участника, без имени и печати
+    if(job.sys){
+        const s=document.createElement('div');
+        s.className='cmsg sys show';
+        s.innerHTML='<span class="csys">'+job.text+'</span>';
+        log.appendChild(s);
+        trimFeed(log);
+        if(!(chatDetachedAt&&Date.now()-chatDetachedAt<5000))log.scrollTop=log.scrollHeight;
+        chatTyping=false;
+        if(chatQueue.length)setTimeout(pumpChat,320);
+        return;
+    }
+    const sp=CREW[job.who]||EXTERN[job.who]||null;
+    const ai=actorInfo(job.who)||CREW.KEP;
     const el=document.createElement('div');
-    el.className='cmsg show'+(EXTERN[job.who]?' ext':'');
-    el.innerHTML=`<div class="cmsg-hdr"><span class="ctime">${t}</span><span class="cwho" data-who="${job.who}" title="Вставить имя в сообщение" style="color:${sp.color}">${sp.glyph} ${sp.full}</span></div><span class="ctext"></span>`;
+    const isExt=!!(sp&&!CREW[job.who]);
+    el.className='cmsg show'+(isExt?' ext':'');
+    const tagHtml=ai&&ai.tag?'<span class="ctag">'+ai.tag+'</span>':'';
+    el.innerHTML=`<div class="cmsg-hdr"><span class="ctime">${t}</span><span class="cwho" data-who="${job.who}" title="Вставить имя в сообщение" style="color:${ai.color}">${ai.glyph} ${ai.full}</span>${tagHtml}</div><span class="ctext"></span>`;
     if(job.meta&&job.meta.vote)el.classList.add('vote');
     // лента прокручивается: держим низ, пока человек не ушёл читать историю.
     // при отмотке позиция держится 5 секунд, потом принудительный возврат вниз
@@ -3320,6 +3400,10 @@ function advanceShip(){
                 const _bs=lfBondStory();
                 if(_bs)addJournal('БИО-ГРУЗ: '+_bs,'good');
                 crewReact('depart');
+                // при отстыковке внешние участники уходят из канала, пассажиры входят
+                guestsLeaveAll();
+                passengerList.forEach(p=>{if(p.alien===undefined)p.alien=Math.random()<0.22;});
+                paxActors().forEach(p=>guestEnter(p.who));
             }
             break;
         case ShipState.TRANSIT:
@@ -3384,6 +3468,7 @@ function advanceShip(){
                     combatEnemy=(()=>{const _hb=universeHeading();const spread=(Math.random()-0.5)*0.9;return {name:'КОРАБЛЬ «М-9»',type:'НЕИЗВ',alleg:'ПИРАТ',d:7+Math.random()*15,ra:_hb+spread}})();
                     hullPct=Math.max(15,hullPct-8-Math.floor(Math.random()*10));
                     crewReact('combat');
+                    guestEnter('CPT');
                 } else {
                     setState(ShipState.APPROACH);
                     stateTimer=0;
@@ -3433,6 +3518,9 @@ function advanceShip(){
                 addJournal('СТЫКОВКА: шлюз '+currentStation+', захваты зафиксированы');
                 showBanner('СТЫКОВКА ЗАВЕРШЕНА','cyan',4000);
                 crewReact('dock');
+                // пассажиры высажены — уходят из канала; на станции в канал входит диспетчер
+                paxActors().forEach(p=>guestLeave(p.who));
+                guestEnter('DPH');
                 if(currentMission){
                     settleMission();
                 }
@@ -3447,6 +3535,7 @@ function advanceShip(){
                 transitProgress=50;
                 combatEnemy=null;
                 document.getElementById('combatOverlay').classList.remove('active');
+                guestLeave('CPT');
                 addJournal('ЦЕЛОСТНОСТЬ: бой завершён, противник отошёл','good');
                 crewReact('combatWin');
                 showBanner('ВРАГ ОТХОДИТ','amber',3000);
@@ -4100,6 +4189,23 @@ function chatActivity(){
     chatStepAt=now+400+Math.random()*1500;
     chatQuietUntil=now;   // шаг управляет очередью
 }
+// кто говорит в фоне: обычно экипаж, иногда пассажир или участник канала со стороны.
+// Часть пассажиров — внеземные: могут говорить на своём языке без перевода.
+function ambientCast(){
+    const s={scene:chatScene()};
+    const px=paxActors();
+    const g=chatGuests.filter(x=>/^PAX/.test(x.who)===false);
+    const r=Math.random();
+    if(px.length&&(r<0.26||(!g.length&&r<0.34))){
+        const p=px[Math.floor(Math.random()*px.length)];
+        s.prefer=p.who;
+        const rec=passengerList[parseInt(p.who.slice(3),10)-1];
+        if(rec&&rec.alien&&Math.random()<0.6)s.alien=true;
+    }else if(g.length&&r<0.40){
+        s.prefer=g[Math.floor(Math.random()*g.length)].who;
+    }
+    return s;
+}
 function emitChatLine(){
     // фон: реплику пишет модель под текущую обстановку.
     // Заготовки включаются только если модель недоступна.
@@ -4114,7 +4220,7 @@ function emitChatLine(){
     }
     if(aiReady()){
         // если модель недоступна — эфир молчит, а не подсовывает заготовки
-        aiSay('ambient',{scene:chatScene()},null,{base:400,step:1000,jitter:800,prio:false,rush:false});
+        aiSay('ambient',ambientCast(),null,{base:400,step:1000,jitter:800,prio:false,rush:false});
         return;
     }
     legacyAmbient();
@@ -4174,24 +4280,11 @@ window.SIM={curEra,simWorldDays,days:simWorldDays,newWorld:startNewWorld};
 function stationVoice(){
     const st=(currentStation||'станции').replace('СТАНЦИЯ «','').replace('«','').replace('»','')||'станции';
     const berth=5+Math.floor(Math.random()*26);
-    const pool=[
-        {who:'DPH',text:'«'+st+'» — «Меридиан», диспетчер на связи. Стыковочный порт '+berth+', швартовка по маяку. Прошу подтвердить.'},
-        {who:'DPH',text:'«Меридиан», добрый час! Здесь диспетчер '+st+'. Готовы принять борт — пирс '+berth+'.'},
-        {who:'LCH',text:'Лоцман '+st+'. Веду вас к пирсу '+berth+' между баржами. Под правым бортом контейнеровоз — чуть правее, пожалуйста.'},
-        {who:'LCH',text:'Встречаем у порта '+berth+'. На руле не резко: у станции обслуживание трассы, датчики чувствительные.'},
-        {who:'CUS',text:'Таможенный оператор '+st+'. Прошу манифест и список пассажиров. Скан номера — после закрепления.'},
-        {who:'CUS',text:'Служба таможни '+st+' просматривает документацию «Меридиана». Если в журнале есть отметки ремонта — квитанции сохраните.'}
-    ];
-    const l=pool[Math.floor(Math.random()*pool.length)];
-    if(!extSay(l.who,l.text))return;
-    // crew usually answers back
-    setTimeout(()=>{const a=Math.floor(Math.random()*3);
-        const who=['KEP','ZAR','FIN'][a];
-        const rep=[
-            '«'+st+'», принято, пирс '+berth+'. Готовимся.','Понял, '+st+', идём на пирс '+berth+'.','Принято! Пирс '+berth+', заходим аккуратно, я — штурман-хакер, маршрут уже в калькуляторе.'
-        ][a];
-        crewSay(who,rep);
-    },2600);
+    // указания по стыковке даёт модель: диспетчер или лоцман, по обстановке
+    aiSay('event',{
+        event:'подход к станции '+st+', стыковочный пирс '+berth+': диспетчер или лоцман даёт указания по швартовке',
+        scene:chatScene()
+    },null,{base:400,step:1800,jitter:900});
 }
 // generate a dialogue line from the CURRENT story state — never repeated,
 // thrown into the feed and forgotten afterwards.
@@ -4334,6 +4427,9 @@ function chatScene(){
         fuel:Math.round(fuelPct),hull:Math.round(hullPct),shield:Math.round(shieldPct),air:Math.round(lifePct),
         progress:Math.round(transitProgress),
         duty:(typeof onDuty!=='undefined'?onDuty.slice():null),
+        // внешние участники и пассажиры: модель может говорить и от них
+        guests:chatGuests.map(g=>({who:g.who,name:g.label})),
+        paxList:paxActors().map(p=>({who:p.who,name:p.full,role:p.tag})),
         decision:pendingDecision?{kind:pendingDecision.kind,options:pendingDecision.options.map(o=>o.label)}:null,
         history:chatHistory.slice(-12)
     };
@@ -5161,17 +5257,17 @@ function namePlateState(mode,name){
     if(okBtn)okBtn.classList.toggle('hidden',mode!=='ok');
     if(mode==='ask'){
         pendingName='';
-        if(t)t.textContent='ВНУТРЕННИЙ КАНАЛ ЭКИПАЖА';
-        if(lead)lead.textContent='«Меридиан» на связи. Канал закрытый, служебный — назови себя, сверю с судовой ролью.';
-        if(note)note.textContent='назовись, и я найду тебя в списке экипажа';
+        if(t)t.textContent='КАНАЛ «МЕРИДИАНА»';
+        if(lead)lead.textContent='«Меридиан» на связи. Назови себя — сверю с базой корабля.';
+        if(note)note.textContent='назовись, и я проверю по базе';
     }else if(mode==='check'){
-        if(t)t.textContent='СВЕРКА ПО СУДОВОЙ РОЛИ';
-        if(lead)lead.textContent='Сличаю имя с судовой ролью «Меридиана»: '+String(name||'').toUpperCase();
-        if(note)note.textContent='секунду, канал пока закрыт';
+        if(t)t.textContent='СВЕРКА С БАЗОЙ КОРАБЛЯ';
+        if(lead)lead.textContent='Проверяю по базе корабля: '+String(name||'').toUpperCase();
+        if(note)note.textContent='канал пока закрыт';
     }else if(mode==='ok'){
         if(t)t.textContent='ДОПУСК К КАНАЛУ ОТКРЫТ';
-        if(lead)lead.textContent=String(name||'')+' — в судовой роли. Внутренний канал открыт, писать в эфир можно.';
-        if(note)note.textContent='судовая роль сходится: койка, вахта и место в эфире — твои';
+        if(lead)lead.textContent=String(name||'')+' — в базе корабля. Канал открыт, писать можно.';
+        if(note)note.textContent='подтверди, чтобы войти в эфир';
     }
 }
 
@@ -5196,7 +5292,7 @@ function submitName(){
         pendingName=String(raw).trim();
         nameChecking=false;
         namePlateState('ok',pendingName);
-    },1200);
+    },2800);
 }
 function acceptBoarding(){
     const nm=pendingName;
@@ -5379,10 +5475,13 @@ function restoreChat(lines){
     if(!log)return;
     lines.forEach(m=>{
         if(!m||!m.text)return;
-        const sp=CREW[m.who]||EXTERN[m.who]||null;
+        const sp=actorInfo(m.who);
         const el=document.createElement('div');
-        el.className='cmsg show'+(m.who==='ME'?' me':'')+(EXTERN[m.who]?' ext':'');
+        const isExt=!!(sp&&sp.ext);
+        el.className='cmsg show'+(m.who==='ME'?' me':'')+(isExt?' ext':'');
         el.innerHTML='<div class="cmsg-hdr"><span class="ctime">--:--:--</span><span class="cwho"></span></div><span class="ctext"></span>';
+        const hdr=el.querySelector('.cmsg-hdr');
+        if(sp&&sp.tag){const tg=document.createElement('span');tg.className='ctag';tg.textContent=sp.tag;hdr.appendChild(tg)}
         const whoEl=el.querySelector('.cwho');
         whoEl.textContent=(m.who==='ME')?(userName||'ВЫ'):(sp?sp.glyph+' '+sp.full:m.who);
         if(sp)whoEl.style.color=sp.color;
