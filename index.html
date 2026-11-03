@@ -233,8 +233,8 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .cmsg-hdr .cwho:hover{text-decoration:underline dotted rgba(0,229,255,0.5)}
 .cmsg-hdr .cwho.me-self{cursor:default}
 /* пометка участника: кто это в эфире (пассажир, диспетчер станции, чужой борт) */
-.ctag{margin-left:auto;font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;letter-spacing:.7px;color:rgba(255,210,138,0.78);border:1px solid rgba(255,210,138,0.30);border-radius:2px;padding:1px 4px;white-space:nowrap;background:rgba(255,210,138,0.05)}
-.cmsg.ext .ctag{color:rgba(255,210,138,0.85);border-color:rgba(255,210,138,0.38)}
+.ctag{margin-left:auto;font-family:'Rajdhani',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.3px;color:rgba(255,210,138,0.80);border:1px solid rgba(255,210,138,0.28);border-radius:2px;padding:0 4px;white-space:nowrap;background:rgba(255,210,138,0.05)}
+.cmsg.ext .ctag{color:rgba(255,214,150,0.88);border-color:rgba(255,210,138,0.36)}
 /* системная строка канала: вход и выход участников */
 .cmsg.sys{display:flex;flex-direction:row;justify-content:center;border-left-color:transparent;background:none;padding:3px 0 3px 0}
 .csys{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:.4px;color:rgba(140,175,195,0.72);font-style:italic}
@@ -1640,33 +1640,61 @@ const EXTERN={
 };
 // ---- участники канала: экипаж, пассажиры, внешние (диспетчеры, капитаны бортов) ----
 // У каждого участника — своя пометка, чтобы было видно, кто это в эфире.
-const EXT_TAG={
-    DPH:'ДИСПЕТЧЕР СТАНЦИИ',LCH:'ЛОЦМАН СТАНЦИИ',CUS:'СЛУЖБА СТАНЦИИ',
-    BDZ:'ВНЕШНИЙ',MDV:'ВНЕШНИЙ',AGR:'ВНЕШНИЙ',ONN:'СЛУЖБА ООН',UN1:'КОМАНДИР ООН',
-    MZO:'НАБЛЮДАТЕЛЬ',RCE:'СНАБЖЕНЕЦ',RVK:'РАЗВЕДЧИК',LCY:'СВЯЗИСТ',
-    RFG:'КУРЬЕР',DSV:'ВНЕШНИЙ',TSO:'СЛУЖБА ТС',DRM:'ГЛАВА ТС СОЮЗА',
-    KOR:'НАУКА ЛАКОНИИ',TEZ:'ВНЕШНИЙ',TNK:'ОХОТНИК',FIL:'ВНЕШНИЙ',GHL:'ОПЕРАТОР',
-    CPT:'КАПИТАН БОРТА'
+// роли внешних участников — так, как их видит человек в канале
+const EXT_ROLE={
+    DPH:'диспетчер станции',LCH:'лоцман станции',CUS:'таможенный оператор',
+    BDZ:'инженер ледовоза',MDV:'врач клиники',AGR:'агроном',ONN:'офицер ООН',UN1:'командир ООН',
+    MZO:'наблюдатель',RCE:'снабженец',RVK:'разведчик',LCY:'связист',RFG:'курьер',DSV:'внешний',
+    TSO:'чиновник ТС',DRM:'глава ТС Союза',KOR:'наука Лаконии',TEZ:'внешний',TNK:'охотница',
+    FIL:'внешний',GHL:'оператор',CPT:'капитан корабля'
 };
+// имена внешних участников: поясники, земляне, лаконцы — по канону
+const EXT_NAMES=['Зорг','Ли-17','Т. Карвальо','Ханеко Ито','М. Драгун','С. Апдайк','В. Очоа','Нг-9','Б. Камаль','Р. Штерн','А. Мбеке','Дж. Ойе','Кацуми Рэй','П. Соломон','Ю. Дан','М. Хан'];
+let extCast={};
+function stationName(){
+    const st=(typeof currentStation!=='undefined'&&currentStation)?currentStation:((typeof nextStation!=='undefined')?nextStation:'');
+    return String(st||'').replace('СТАНЦИЯ «','').replace(/[«»]/g,'').trim()||'станция';
+}
+function extNameFor(who){
+    if(extCast[who])return extCast[who];
+    const used=Object.keys(extCast).map(k=>extCast[k].name);
+    const free=EXT_NAMES.filter(n=>used.indexOf(n)<0);
+    const pool=free.length?free:EXT_NAMES;
+    extCast[who]={name:pool[Math.floor(Math.random()*pool.length)]};
+    return extCast[who];
+}
 // пассажиры на борту — они тоже могут говорить в канале
 function paxActors(){
     return passengerList.slice(0,4).map((p,i)=>({
-        who:'PAX'+(i+1),full:p.name,tag:'ПАССАЖИР'+(p.role?' · '+p.role:''),
+        who:'PAX'+(i+1),full:p.name,tag:'[пассажир'+(p.role?' · '+p.role:'')+']',
         color:'#ffd9a0',glyph:'◉'
     }));
 }
 function actorInfo(who){
     if(!who)return null;
     if(who==='ME')return {full:userName||'ВЫ',color:'#ffcc66',glyph:'▸',me:true};
-    // капитан чужого борта: имя зависит от того, кто рядом
+    // капитан чужого борта: своё имя и название корабля, у которого он капитан
     if(who==='CPT'){
-        const nm=(typeof combatEnemy!=='undefined'&&combatEnemy&&combatEnemy.name)?('капитан борта '+combatEnemy.name):'капитан чужого борта';
-        return {full:nm,color:'#ffb0b0',glyph:'◬',tag:'КАПИТАН БОРТА',ext:true};
+        const ship=(typeof combatEnemy!=='undefined'&&combatEnemy&&combatEnemy.name)?combatEnemy.name:'неизвестный борт';
+        const c=extNameFor('CPT');
+        return {full:c.name,color:'#ffb0b0',glyph:'◬',tag:'[капитан корабля «'+ship+'»]',ext:true};
     }
     const pax=paxActors().filter(p=>p.who===who)[0];
     if(pax)return pax;
     if(CREW[who])return {full:CREW[who].full,color:CREW[who].color,glyph:CREW[who].glyph,tag:''};
-    if(EXTERN[who])return {full:EXTERN[who].full,color:EXTERN[who].color,glyph:EXTERN[who].glyph,tag:EXT_TAG[who]||'ВНЕШНИЙ',ext:true};
+    if(EXTERN[who]){
+        const role=EXT_ROLE[who]||'внешний';
+        // у станционных служб имени нет — даём его, а объект берём из обстановки
+        if(/^(DPH|LCH|CUS)$/.test(who)){
+            const c=extNameFor(who);
+            const obj='«'+stationName()+'»';
+            return {full:c.name,color:EXTERN[who].color,glyph:EXTERN[who].glyph,tag:'['+role+' '+obj+']',ext:true};
+        }
+        const parts=String(EXTERN[who].full).split(',');
+        const nm=(parts[0]||EXTERN[who].full).trim();
+        const rl=(parts.slice(1).join(',')||role).trim();
+        return {full:nm,color:EXTERN[who].color,glyph:EXTERN[who].glyph,tag:'['+rl+']',ext:true};
+    }
     return null;
 }
 // кто сейчас «в канале» из внешних: вход и выход отмечаем сообщением
@@ -1675,15 +1703,15 @@ function guestEnter(who){
     const info=actorInfo(who);
     if(!info||!info.tag)return false;
     if(chatGuests.some(g=>g.who===who))return false;
-    chatGuests.push({who:who,label:info.full});
-    chatSys(info.full+' вошёл в чат');
+    chatGuests.push({who:who,label:info.full,tag:info.tag||''});
+    chatSys('ПОДКЛЮЧИЛСЯ К КАНАЛУ — '+info.full+' '+(info.tag||''));
     return true;
 }
 function guestLeave(who){
     const g=chatGuests.filter(x=>x.who===who)[0];
     if(!g)return false;
     chatGuests=chatGuests.filter(x=>x.who!==who);
-    chatSys(g.label+' покинул чат');
+    chatSys('ОТКЛЮЧИЛСЯ ОТ КАНАЛА — '+g.label+' '+(g.tag||''));
     return true;
 }
 function guestsLeaveAll(){
@@ -4428,7 +4456,7 @@ function chatScene(){
         progress:Math.round(transitProgress),
         duty:(typeof onDuty!=='undefined'?onDuty.slice():null),
         // внешние участники и пассажиры: модель может говорить и от них
-        guests:chatGuests.map(g=>({who:g.who,name:g.label})),
+        guests:chatGuests.map(g=>({who:g.who,name:g.label,role:g.tag||''})),
         paxList:paxActors().map(p=>({who:p.who,name:p.full,role:p.tag})),
         decision:pendingDecision?{kind:pendingDecision.kind,options:pendingDecision.options.map(o=>o.label)}:null,
         history:chatHistory.slice(-12)
@@ -5576,4 +5604,5 @@ window.__panelReady=1;
 </script>
 </body>
 </html>
+
 
