@@ -171,6 +171,20 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
    но лента под ней читается и проматывается; строка ввода остаётся заблокированной */
 .chat-log-wrap{position:relative;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}
 .chat-log-wrap .chat-log{flex:1}
+/* закреплённое голосование капитана: заголовок, варианты-кнопки, таймер */
+.vote-card{flex-shrink:0;margin:0 0 4px;padding:7px 9px 8px;background:rgba(30,22,4,0.92);border:1px solid rgba(255,204,102,0.5);box-shadow:0 0 16px rgba(255,204,102,0.12);z-index:5}
+.vote-card.hidden{display:none}
+.vc-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.vc-title{font-family:'Orbitron',sans-serif;font-size:8px;font-weight:700;letter-spacing:1.4px;color:var(--gold)}
+.vc-timer{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:rgba(255,204,102,0.85);border:1px solid rgba(255,204,102,0.35);border-radius:2px;padding:0 4px;min-width:18px;text-align:center}
+.vc-q{font-family:'Rajdhani',sans-serif;font-size:11.5px;line-height:1.3;color:rgba(255,240,215,0.95);margin:4px 0 6px}
+.vc-opts{display:flex;flex-direction:column;gap:4px}
+.vc-btn{text-align:left;background:rgba(255,204,102,0.07);border:1px solid rgba(255,204,102,0.32);color:rgba(255,238,205,0.95);font-family:'Rajdhani',sans-serif;font-size:11px;padding:4px 7px;border-radius:2px;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.vc-btn:hover{background:rgba(255,204,102,0.18);border-color:rgba(255,204,102,0.6)}
+.vc-btn.picked{background:rgba(255,204,102,0.24);border-color:var(--gold);font-weight:700}
+.vc-btn:disabled{cursor:default;opacity:.6}
+.vc-btn.picked:disabled{opacity:1}
+.vc-res{font-family:'Rajdhani',sans-serif;font-size:10.5px;line-height:1.35;color:rgba(225,245,235,0.92);white-space:pre-line}
 .name-plate{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:90%;max-width:430px;min-height:112px;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:12px 14px;background:rgba(24,18,6,0.80);border:1px solid rgba(255,204,102,0.45);box-shadow:0 0 26px rgba(0,0,0,0.6);z-index:6}
 .name-plate-t{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.4px;color:var(--gold);text-align:center}
 .name-plate-lead{font-family:'Rajdhani',sans-serif;font-size:10.5px;letter-spacing:.3px;line-height:1.3;color:rgba(255,238,210,0.88);text-align:center}
@@ -374,6 +388,12 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
     <div class="hud grow30">
         <div class="hdr"><span class="pt">Чат команды</span><span class="ai-chip" id="aiChip" title="Подключить модель">ИИ: выкл</span><span class="whoami" id="chatWho" title="Сменить имя"></span><span class="badge ok" id="crewBadge">В ЭФИРЕ</span></div>
         <div class="chat-log-wrap">
+            <div class="vote-card hidden" id="voteCard">
+                <div class="vc-top"><span class="vc-title">ГОЛОСОВАНИЕ</span><span class="vc-timer" id="vcTimer">10</span></div>
+                <div class="vc-q" id="vcQ"></div>
+                <div class="vc-opts" id="vcOpts"></div>
+                <div class="vc-res hidden" id="vcRes"></div>
+            </div>
             <div class="pb chat-log" id="crewChat"></div>
             <div class="name-plate hidden" id="nameOverlay">
                 <span class="name-plate-t" id="namePlateTitle">ПРИВЕТСТВУЕМ НА БОРТУ</span>
@@ -4367,9 +4387,9 @@ function stationVoice(){
     guestEnter('DPH');
     const g=localGossip();
     aiSay('event',{
-        event:'подход к станции '+st+', стыковочный пирс '+berth+': диспетчер ведёт швартовку'+
-              (g.local?'; между делом он может упомянуть местное событие: '+g.local:'')+
-              (g.world?'; а также событие эпохи: '+g.world:''),
+        event:'подход к станции '+st+': надо принять борт и провести швартовку на пирс '+berth+
+              (g.local?'; между делом уместно упомянуть местное событие: '+g.local:'')+
+              (g.world?'; или событие эпохи: '+g.world:''),
         scene:chatScene(),
         prefer:'DPH'
     },null,{base:400,step:1800,jitter:900});
@@ -5149,6 +5169,68 @@ function pickTransitDecision(){
     return pool[Math.floor(Math.random()*pool.length)];
 }
 
+// ---- карточка голосования: кнопки, таймер, итоги ----
+let voteTickTimer=0;
+function showVoteCard(q,options){
+    const card=document.getElementById('voteCard');
+    if(!card)return;
+    const t=document.getElementById('vcTimer');
+    const qEl=document.getElementById('vcQ');
+    const oEl=document.getElementById('vcOpts');
+    const rEl=document.getElementById('vcRes');
+    if(rEl){rEl.classList.add('hidden');rEl.textContent=''}
+    if(qEl)qEl.textContent=q;
+    if(oEl){
+        oEl.innerHTML='';
+        options.forEach(o=>{
+            const b=document.createElement('button');
+            b.type='button';b.className='vc-btn';b.setAttribute('data-id',o.id);
+            b.textContent=o.label;
+            b.addEventListener('click',()=>votePick(o.id));
+            oEl.appendChild(b);
+        });
+    }
+    card.classList.remove('hidden');
+    if(voteTickTimer)clearInterval(voteTickTimer);
+    const tick=()=>{
+        const d=pendingDecision;
+        if(!d||!t)return;
+        const left=Math.max(0,Math.ceil((d.deadline-Date.now())/1000));
+        t.textContent=String(left);
+        if(left<=0&&voteTickTimer){clearInterval(voteTickTimer);voteTickTimer=0}
+    };
+    tick();
+    voteTickTimer=setInterval(tick,250);
+}
+function votePick(id){
+    const d=pendingDecision;
+    if(!d||d.vote)return;
+    d.vote=id;
+    document.querySelectorAll('#vcOpts .vc-btn').forEach(b=>{
+        b.disabled=true;
+        if(b.getAttribute('data-id')===id)b.classList.add('picked');
+    });
+}
+function hideVoteCard(){
+    if(voteTickTimer){clearInterval(voteTickTimer);voteTickTimer=0}
+    const card=document.getElementById('voteCard');
+    if(card)card.classList.add('hidden');
+}
+// итоги — в ленту, как в обычном чате: кто что выбрал и кто воздержался
+function postVoteResults(d,votes,busy,lab){
+    const labOf=id=>((d.options.find(o=>o.id===id)||{}).label||id);
+    const rows=[];
+    Object.keys(votes).forEach(k=>{
+        const nm=(k==='ME')?(userName||'ВЫ'):((CREW[k]&&CREW[k].full)||k);
+        rows.push(nm+' — «'+labOf(votes[k])+'»');
+    });
+    (busy||[]).forEach(k=>{rows.push(((CREW[k]&&CREW[k].full)||k)+' — воздержался')});
+    if(!(d&&d.vote)&&userName)rows.push(userName+' — воздержался');
+    const counts={};
+    Object.keys(votes).forEach(k=>{const v=votes[k];counts[v]=(counts[v]||0)+1});
+    const summary=Object.keys(counts).map(id=>labOf(id)+': '+counts[id]).join(', ');
+    chatSys('ИТОГ ГОЛОСОВАНИЯ — '+lab+' ('+summary+', воздержались: '+((busy||[]).length)+')\n'+rows.join('\n'));
+}
 function openDecision(kind){
     if(pendingDecision)return;
     const spec=decisionSpec(kind);
@@ -5169,7 +5251,10 @@ function openDecision(kind){
         }
     }
     const q=spec.ask[Math.floor(Math.random()*spec.ask.length)];
-    pendingDecision={kind,options,stances,vote:null,deadline:Date.now()+18000};
+    // часть экипажа может быть занята и не успеть к голосованию — это воздержавшиеся
+    const busy=[];
+    Object.keys(stances).forEach(w=>{if(w!=='KEP'&&Math.random()<0.22){busy.push(w);delete stances[w]}});
+    pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+10000};
     chatHeat(90000);
     // кто выскажется — от двух человек до всех, кто на связи
     const pool=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0&&w!=='KEP');
@@ -5177,7 +5262,7 @@ function openDecision(kind){
     const order=(pool.length?pool:['ZAR','LUS']).sort(()=>Math.random()-0.5).slice(0,speakers);
     const roster=order.map(who=>({who:who,label:(options.find(o=>o.id===stances[who])||{}).label||''}));
     // вопрос капитана и мнения пишет модель; заготовки — только при обрыве связи
-    const aiSayOpts={base:500,step:1800,jitter:1200,prio:true,limit:6,firstMeta:{vote:true}};
+    const aiSayOpts={base:500,step:1800,jitter:1200,prio:true,limit:6};
     // отдельный вопрос лично игроку — только после вопроса команде
     if(userName&&Math.random()<0.4){
         const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
@@ -5200,7 +5285,8 @@ function openDecision(kind){
         pendingDecision.vote=preVote.id;
         preVote=null;
     }
-    pendingDecision.timer=setTimeout(()=>resolveDecision(),18000);
+    showVoteCard(q,options);
+    pendingDecision.timer=setTimeout(()=>resolveDecision(),10000);
 }
 
 const POOL_VOTE={
@@ -5310,6 +5396,8 @@ function resolveDecision(){
     let winner=best,how='по голосам';
     if(tie){winner=d.stances.KEP;how='голос капитана при равенстве'}
     const lab=(d.options.find(o=>o.id===winner)||{}).label||winner;
+    hideVoteCard();
+    try{postVoteResults(d,votes,d.busy||[],lab)}catch(e){}
     if(d.kind==='cargo'){
         if(winner==='skip'){
             cargoList=[];passengerList=[];
