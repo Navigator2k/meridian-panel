@@ -181,6 +181,9 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .name-plate.ok .name-plate-t{color:#7ef0a0}
 .name-plate.ok .name-plate-lead{color:rgba(225,255,235,0.95)}
 .name-plate.ok .name-plate-note{color:rgba(126,240,160,0.9)}
+.name-plate-ok{width:100%;background:rgba(110,240,160,0.16);border:1px solid rgba(110,240,160,0.55);color:#8df3ae;font-family:'Orbitron',sans-serif;font-size:9.5px;font-weight:700;letter-spacing:1.2px;padding:6px 8px;border-radius:2px;cursor:pointer;pointer-events:auto}
+.name-plate-ok:hover{background:rgba(110,240,160,0.26)}
+.name-plate-ok.hidden{display:none}
 .name-plate.hidden{display:none}
 .name-plate .chat-name{border-top:none;background:none;padding:0;flex-direction:column;gap:5px;align-items:stretch}
 .name-plate .chat-name input{width:100%;font-size:11.5px;padding:5px 8px;text-align:center;letter-spacing:.2px}
@@ -368,7 +371,8 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
                     <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Твоё имя">
                     <button id="nameOk" type="button">ВОЙТИ</button>
                 </div>
-                <span class="name-plate-note" id="namePlateNote">представься — и эфир откроется для письма</span>
+                <span class="name-plate-note" id="namePlateNote">представься — сверю с судовой ролью</span>
+                <button type="button" class="name-plate-ok hidden" id="namePlateOk">ВОЙТИ В ЭФИР</button>
             </div>
         </div>
         <div class="chat-input" id="chatInputRow">
@@ -5136,30 +5140,32 @@ function applyChatMode(){
     }
 }
 
-// ---- плашка регистрации: приветствие и сверка с базой корабля ----
+// ---- плашка регистрации: закрытый эфир только для своих, сверка с судовой ролью ----
 let nameChecking=false;
+let pendingName='';
 function namePlateState(mode,name){
     const ovl=document.getElementById('nameOverlay');
     if(!ovl)return;
     const t=document.getElementById('namePlateTitle');
     const lead=document.getElementById('namePlateLead');
     const note=document.getElementById('namePlateNote');
+    const okBtn=document.getElementById('namePlateOk');
     ovl.classList.toggle('busy',mode!=='ask');
     ovl.classList.toggle('ok',mode==='ok');
+    if(okBtn)okBtn.classList.toggle('hidden',mode!=='ok');
     if(mode==='ask'){
-        if(t)t.textContent=userName?'СМЕНА ЗАПИСИ В РЕЕСТРЕ':'ПРИВЕТСТВУЕМ НА БОРТУ';
-        if(lead)lead.textContent=userName
-            ?'«Меридиан» на связи. Меняю твою запись в реестре экипажа — назови новое имя.'
-            :'«Меридиан» на связи. Свободная койка найдётся, но сначала сверю тебя с базой экипажа.';
-        if(note)note.textContent='представься — и эфир откроется для письма';
+        pendingName='';
+        if(t)t.textContent='ЗАКРЫТЫЙ ЭФИР КОМАНДЫ';
+        if(lead)lead.textContent='«Меридиан» на связи. В эфир пишут только члены экипажа — назови себя, сверю с судовой ролью.';
+        if(note)note.textContent='представься — сверю с судовой ролью';
     }else if(mode==='check'){
         if(t)t.textContent='СВЕРКА С БАЗОЙ КОРАБЛЯ';
-        if(lead)lead.textContent='Запрашиваю реестр экипажа «Меридиана», проверяю личное дело: '+String(name||'').toUpperCase();
+        if(lead)lead.textContent='Запрашиваю судовую роль «Меридиана», ищу: '+String(name||'').toUpperCase();
         if(note)note.textContent='доступ к эфиру откроется после сверки';
     }else if(mode==='ok'){
-        if(t)t.textContent=userName?'ЗАПИСЬ ОБНОВЛЕНА':'ПРОВЕРКА ПРОЙДЕНА';
-        if(lead)lead.textContent=String(name||'')+' — числится в реестре экипажа «Меридиана».';
-        if(note)note.textContent=userName?'дальше ты в журнале — '+name:'добро пожаловать на борт, '+name;
+        if(t)t.textContent='ДОСТУП РАЗРЕШЁН';
+        if(lead)lead.textContent=String(name||'')+' — числится в судовой роли «Меридиана», эфир для него открыт.';
+        if(note)note.textContent='нажми кнопку, чтобы войти в эфир — сообщение будет ждать';
     }
 }
 
@@ -5176,19 +5182,25 @@ function submitName(){
         return;
     }
     ni.value='';
-    // сверка с базой: сначала запрос в реестр, потом подтверждение и допуск в эфир
+    // сверка с судовой ролью: запрос в базу, затем результат — и он висит,
+    // пока человек не подтвердит, что прочитал
     nameChecking=true;
     namePlateState('check',raw);
     setTimeout(()=>{
-        namePlateState('ok',raw);
-        setTimeout(()=>{
-            nameChecking=false;
-            if(!setUserName(raw)){
-                nameChecking=false;
-                namePlateState('ask');
-            }
-        },1600);
+        pendingName=String(raw).trim();
+        nameChecking=false;
+        namePlateState('ok',pendingName);
     },1200);
+}
+function acceptBoarding(){
+    const nm=pendingName;
+    const okBtn=document.getElementById('namePlateOk');
+    if(okBtn)okBtn.classList.add('hidden');
+    if(!nm){namePlateState('ask');return false}
+    pendingName='';
+    if(setUserName(nm))return true;
+    namePlateState('ask');
+    return false;
 }
 function submitChatInput(){
     const inp=document.getElementById('chatInput');
@@ -5290,8 +5302,12 @@ function setupChatInput(){
         if(e.key==='Enter'){e.preventDefault();submitName()}
     });
     if(nOk)nOk.addEventListener('click',submitName);
+    // подтверждение прочтения: плашка ждёт кнопку, а не исчезает сама
+    const plateOk=document.getElementById('namePlateOk');
+    if(plateOk)plateOk.addEventListener('click',acceptBoarding);
     if(who)who.addEventListener('click',()=>{
         if(!userName)return;
+        pendingName='';nameChecking=false;
         namingMode=true;applyChatMode();
     });
     // клик по имени автора в ленте — вставить/убрать адресата
