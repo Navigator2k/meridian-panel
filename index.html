@@ -171,9 +171,16 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
    но лента под ней читается и проматывается; строка ввода остаётся заблокированной */
 .chat-log-wrap{position:relative;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}
 .chat-log-wrap .chat-log{flex:1}
-.name-plate{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:90%;max-width:430px;min-height:112px;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:12px 14px;background:rgba(24,18,6,0.94);border:1px solid rgba(255,204,102,0.45);box-shadow:0 0 26px rgba(0,0,0,0.6);z-index:6}
+.name-plate{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:90%;max-width:430px;min-height:112px;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:12px 14px;background:rgba(24,18,6,0.80);border:1px solid rgba(255,204,102,0.45);box-shadow:0 0 26px rgba(0,0,0,0.6);z-index:6}
 .name-plate-t{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.4px;color:var(--gold);text-align:center}
+.name-plate-lead{font-family:'Rajdhani',sans-serif;font-size:10.5px;letter-spacing:.3px;line-height:1.3;color:rgba(255,238,210,0.88);text-align:center}
 .name-plate-note{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:.4px;color:rgba(255,204,102,0.55);text-align:center;line-height:1.25}
+.name-plate.busy .chat-name{display:none}
+.name-plate.busy .name-plate-note{color:rgba(255,204,102,0.75)}
+.name-plate.ok{border-color:rgba(110,240,160,0.55);box-shadow:0 0 26px rgba(0,0,0,0.6),0 0 18px rgba(110,240,160,0.18)}
+.name-plate.ok .name-plate-t{color:#7ef0a0}
+.name-plate.ok .name-plate-lead{color:rgba(225,255,235,0.95)}
+.name-plate.ok .name-plate-note{color:rgba(126,240,160,0.9)}
 .name-plate.hidden{display:none}
 .name-plate .chat-name{border-top:none;background:none;padding:0;flex-direction:column;gap:5px;align-items:stretch}
 .name-plate .chat-name input{width:100%;font-size:11.5px;padding:5px 8px;text-align:center;letter-spacing:.2px}
@@ -209,7 +216,10 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .chat-edit{flex:1;min-width:0;max-height:64px;overflow-y:auto;background:rgba(2,12,24,0.85);border:1px solid rgba(0,229,255,0.18);border-radius:2px;color:rgba(215,235,235,0.92);font-family:'Rajdhani',sans-serif;font-size:11.5px;letter-spacing:.3px;padding:4px 7px;outline:none;line-height:1.35;scrollbar-width:thin}
 .chat-edit:focus{border-color:rgba(0,229,255,0.45);box-shadow:0 0 10px rgba(0,229,255,0.10)}
 .chat-edit:empty::before{content:attr(data-ph);color:rgba(0,229,255,0.30);letter-spacing:.4px}
-.chat-edit.locked{border-color:rgba(255,204,102,0.25);opacity:.5}
+.chat-edit.locked{border:1px dashed rgba(255,204,102,0.45);background:repeating-linear-gradient(45deg,rgba(255,204,102,0.055) 0 6px,rgba(0,0,0,0.16) 6px 12px);color:rgba(255,204,102,0.55);opacity:1;cursor:not-allowed;user-select:none}
+.chat-edit.locked:empty::before{content:attr(data-ph);color:rgba(255,204,102,0.70);letter-spacing:.3px}
+.chat-input button:disabled{opacity:.32;cursor:not-allowed;background:rgba(255,204,102,0.05);border-color:rgba(255,204,102,0.30);color:rgba(255,204,102,0.55)}
+.chat-input button:disabled:hover{background:rgba(255,204,102,0.05)}
 .mention{color:var(--gold);background:rgba(255,204,102,0.12);border:1px solid rgba(255,204,102,0.28);border-radius:2px;padding:0 3px;white-space:nowrap}
 .cmsg-hdr .cwho{cursor:pointer}
 .cmsg-hdr .cwho:hover{text-decoration:underline dotted rgba(0,229,255,0.5)}
@@ -352,12 +362,13 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
         <div class="chat-log-wrap">
             <div class="pb chat-log" id="crewChat"></div>
             <div class="name-plate hidden" id="nameOverlay">
-                <span class="name-plate-t">ПРЕДСТАВЬСЯ КОМАНДЕ</span>
+                <span class="name-plate-t" id="namePlateTitle">ПРИВЕТСТВУЕМ НА БОРТУ</span>
+                <span class="name-plate-lead" id="namePlateLead">«Меридиан» на связи. Свободная койка найдётся, но сначала сверю тебя с базой экипажа.</span>
                 <div class="chat-name" id="nameRow">
                     <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Твоё имя">
                     <button id="nameOk" type="button">ВОЙТИ</button>
                 </div>
-                <span class="name-plate-note">пока не назвался — писать в эфир нельзя</span>
+                <span class="name-plate-note" id="namePlateNote">представься — и эфир откроется для письма</span>
             </div>
         </div>
         <div class="chat-input" id="chatInputRow">
@@ -5107,11 +5118,13 @@ function applyChatMode(){
     if(row)row.classList.toggle('hidden',!namingMode);
     const ovl=document.getElementById('nameOverlay');
     if(ovl)ovl.classList.toggle('hidden',!namingMode);
+    // тексты плашки не сбрасываем посреди сверки
+    if(namingMode&&!nameChecking)namePlateState('ask');
     if(!inp)return;
     if(namingMode){
         inp.setAttribute('contenteditable','false');
         inp.classList.add('locked');
-        inp.setAttribute('data-ph','Сначала представься команде');
+        inp.setAttribute('data-ph','Эфир закрыт — сначала сверка с бортом');
         inp.innerHTML='';
         if(btn)btn.disabled=true;
         if(ni){ni.value='';ni.placeholder='Твоё имя';setTimeout(()=>ni.focus(),80)}
@@ -5122,17 +5135,60 @@ function applyChatMode(){
         if(btn)btn.disabled=false;
     }
 }
+
+// ---- плашка регистрации: приветствие и сверка с базой корабля ----
+let nameChecking=false;
+function namePlateState(mode,name){
+    const ovl=document.getElementById('nameOverlay');
+    if(!ovl)return;
+    const t=document.getElementById('namePlateTitle');
+    const lead=document.getElementById('namePlateLead');
+    const note=document.getElementById('namePlateNote');
+    ovl.classList.toggle('busy',mode!=='ask');
+    ovl.classList.toggle('ok',mode==='ok');
+    if(mode==='ask'){
+        if(t)t.textContent=userName?'СМЕНА ЗАПИСИ В РЕЕСТРЕ':'ПРИВЕТСТВУЕМ НА БОРТУ';
+        if(lead)lead.textContent=userName
+            ?'«Меридиан» на связи. Меняю твою запись в реестре экипажа — назови новое имя.'
+            :'«Меридиан» на связи. Свободная койка найдётся, но сначала сверю тебя с базой экипажа.';
+        if(note)note.textContent='представься — и эфир откроется для письма';
+    }else if(mode==='check'){
+        if(t)t.textContent='СВЕРКА С БАЗОЙ КОРАБЛЯ';
+        if(lead)lead.textContent='Запрашиваю реестр экипажа «Меридиана», проверяю личное дело: '+String(name||'').toUpperCase();
+        if(note)note.textContent='доступ к эфиру откроется после сверки';
+    }else if(mode==='ok'){
+        if(t)t.textContent=userName?'ЗАПИСЬ ОБНОВЛЕНА':'ПРОВЕРКА ПРОЙДЕНА';
+        if(lead)lead.textContent=String(name||'')+' — числится в реестре экипажа «Меридиана».';
+        if(note)note.textContent=userName?'дальше ты в журнале — '+name:'добро пожаловать на борт, '+name;
+    }
+}
+
 function submitName(){
     const ni=document.getElementById('nameInput');
-    if(!ni)return;
+    if(!ni||nameChecking)return;
     const raw=ni.value;
     const t=_n(raw);
     const looksLikeChat=/^(привет|здравств|добрый|доброе|хай|здорово|алло|ку)/.test(t)
         ||t.indexOf('?')>=0||t.split(/\s+/).length>2;
+    if(looksLikeChat||!validName(raw)){
+        ni.placeholder='Только имя, например: Иван';
+        setTimeout(()=>{if(namingMode&&!nameChecking)ni.placeholder='Твоё имя'},2600);
+        return;
+    }
     ni.value='';
-    if(!looksLikeChat&&setUserName(raw))return;
-    ni.placeholder='Только имя, например: Иван';
-    setTimeout(()=>{if(namingMode)ni.placeholder='Твоё имя'},2600);
+    // сверка с базой: сначала запрос в реестр, потом подтверждение и допуск в эфир
+    nameChecking=true;
+    namePlateState('check',raw);
+    setTimeout(()=>{
+        namePlateState('ok',raw);
+        setTimeout(()=>{
+            nameChecking=false;
+            if(!setUserName(raw)){
+                nameChecking=false;
+                namePlateState('ask');
+            }
+        },1600);
+    },1200);
 }
 function submitChatInput(){
     const inp=document.getElementById('chatInput');
