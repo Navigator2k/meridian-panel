@@ -178,7 +178,9 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .vc-who{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--gold)}
 .vc-pin{font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;letter-spacing:.9px;color:rgba(255,204,102,0.8);border:1px solid rgba(255,204,102,0.4);border-radius:2px;padding:0 3px}
 .vc-timer{margin-left:auto;font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:rgba(255,204,102,0.9);border:1px solid rgba(255,204,102,0.35);border-radius:2px;padding:0 4px;min-width:18px;text-align:center}
-.vc-q{font-family:'Rajdhani',sans-serif;font-size:11.5px;line-height:1.3;color:rgba(255,240,215,0.95);margin:4px 0 6px}
+.vc-q{font-family:'Rajdhani',sans-serif;font-size:11.5px;line-height:1.3;color:rgba(255,240,215,0.95);margin:4px 0 4px}
+.vc-desc{font-family:'Rajdhani',sans-serif;font-size:10.5px;line-height:1.38;color:rgba(215,235,240,0.86);margin:0 0 6px;padding:4px 6px;border-left:2px solid rgba(0,229,255,0.28);background:rgba(0,229,255,0.045);white-space:pre-line}
+.vc-desc b{color:rgba(255,238,210,0.96)}
 .vc-opts{display:flex;flex-direction:column;gap:4px}
 .vc-btn{text-align:left;background:rgba(255,204,102,0.07);border:1px solid rgba(255,204,102,0.32);color:rgba(255,238,205,0.95);font-family:'Rajdhani',sans-serif;font-size:11px;padding:4px 7px;border-radius:2px;cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .vc-btn:hover{background:rgba(255,204,102,0.18);border-color:rgba(255,204,102,0.6)}
@@ -397,6 +399,7 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
                     <span class="vc-timer" id="vcTimer">10</span>
                 </div>
                 <div class="vc-q" id="vcQ"></div>
+                <div class="vc-desc" id="vcDesc"></div>
                 <div class="vc-opts" id="vcOpts"></div>
                 <div class="vc-res hidden" id="vcRes"></div>
             </div>
@@ -1183,7 +1186,8 @@ function generateMission(){
                 if(_cargo>0)cargoList.push({name:_cargoNm,cls:_cargo>40?'bulk':'crate',weight:Math.min(200,_cargo),dest});
                 const _pax=m.passenger?m.passenger.n:0;
                 for(let i=0;i<_pax;i++){passengerList.push({name:'пассажир '+(i+1),role:'по контракту:'+m.title,dest,fare:Math.round(m.reward/(_pax||1))})}
-                currentMission={type:'CUSTOM',label:m.title,dest:dest,reward:m.reward,task:m.title,ref:m.ref,era:curEra(),main:!!m.main,cameo:m.cameo||null,result:m.result||null,newsOut:m.newsOut||null};
+                currentMission={type:'CUSTOM',label:m.title,dest:dest,reward:m.reward,task:m.title,ref:m.ref,era:curEra(),main:!!m.main,cameo:m.cameo||null,result:m.result||null,newsOut:m.newsOut||null,
+                    risk:m.risk||2,dist:m.dist||0,client:m.client||'',bonus:m.bonus||null,cargo:(m.cargo||null),passenger:(m.passenger||null),desc:m.desc||''};
                 updateHold();updateMissionPanel();
                 showBanner('КОНТРАКТ: '+m.title+' → '+dest,'cyan',4000);
                 crewReact('mission');
@@ -3478,6 +3482,7 @@ function advanceShip(){
             fuelPct=Math.min(100,fuelPct+1.5);
             if(stateTimer===3){
                 generateMission();
+                makeMissionOffers();
                 updateHold();updateMissionPanel();
                 addJournal('КОНТРАКТ: предложен '+currentMission.label+' → '+currentMission.dest,'good');
                 if(passengerList.length){crewReact('passenger')}
@@ -5111,6 +5116,33 @@ function decisionSpec(kind){
     const heavy=holdFillPct()>72;
     const hazmat=cargoList.some(c=>c.cls==='hazmat');
     if(kind==='cargo'){
+        if(missionOffers.length>1){
+            const opts=missionOffers.map((o,i)=>({id:'offer'+i,label:o.label}));
+            opts.push({id:'skip',label:'отказаться от всех'});
+            const score=(o,who)=>{
+                const risk=o.risk||2;
+                if(who==='ZAR')return (o.reward||0)/(1+risk*0.9);
+                if(who==='LUS')return (o.reward||0)*0.25-risk*1200;
+                if(who==='FIN')return (o.reward||0)*(1+ (risk>=3?0.35:0));
+                if(who==='NUR')return (o.reward||0)/(1+risk*0.75);
+                return (o.reward||0)/(1+risk*0.6);
+            };
+            const stances={};
+            ['KEP','ZAR','LUS','FIN','NUR'].forEach(who=>{
+                let best=0,bestS=-1e12;
+                missionOffers.forEach((o,i)=>{const s=score(o,who);if(s>bestS){bestS=s;best=i}});
+                stances[who]='offer'+best;
+            });
+            return {
+                options:opts,
+                stances:stances,
+                ask:[
+                    'С биржи отобрали '+missionOffers.length+' контракта. Какой берём?',
+                    'Три предложения на столе. Выбираем, что везём.',
+                    'Есть из чего выбрать. Смотрите условия и решайте.'
+                ]
+            };
+        }
         return {
             options:[{id:'take',label:'взять'},{id:'skip',label:'отказаться'}],
             stances:{KEP:(hazmat&&heavy)?'skip':'take',ZAR:(currentMission&&currentMission.reward<9000&&heavy)?'skip':'take',LUS:hazmat?'skip':'take',FIN:'take',NUR:hazmat?'skip':'take'},
@@ -5201,14 +5233,16 @@ function pickTransitDecision(){
 
 // ---- карточка голосования: кнопки, таймер, итоги ----
 let voteTickTimer=0;
-function showVoteCard(q,options){
+function showVoteCard(q,options,details){
     const card=document.getElementById('voteCard');
     if(!card)return;
     const t=document.getElementById('vcTimer');
     const qEl=document.getElementById('vcQ');
+    const dEl=document.getElementById('vcDesc');
     const oEl=document.getElementById('vcOpts');
     const rEl=document.getElementById('vcRes');
     if(rEl){rEl.classList.add('hidden');rEl.textContent=''}
+    if(dEl)dEl.innerHTML=details||'';
     const tm=document.getElementById('vcTime');
     if(tm)tm.textContent=new Date().toTimeString().slice(0,8);
     if(qEl)qEl.textContent=q;
@@ -5278,13 +5312,116 @@ function showVoteResults(d,votes,winner){
         res.classList.remove('hidden');
     }
     if(voteTickTimer){clearInterval(voteTickTimer);voteTickTimer=0}
-    if(timer)timer.textContent='7';
-    let left=7;
+    if(timer)timer.textContent='10';
+    let left=10;
     voteTickTimer=setInterval(()=>{
         left--;
         if(timer)timer.textContent=String(Math.max(0,left));
         if(left<=0){clearInterval(voteTickTimer);voteTickTimer=0;hideVoteCard()}
     },1000);
+}
+// подробности к вопросу: чтобы было понятно, за что голосуем
+function voteDetails(kind){
+    const riskWord=r=>['низкий','средний','высокий','очень высокий','крайний'][Math.max(0,Math.min(4,(r||2)-1))];
+    if(kind==='cargo'){
+        if(missionOffers.length>1){
+            const riskWord2=r=>['низкий','средний','высокий','очень высокий','крайний'][Math.max(0,Math.min(4,(r||2)-1))];
+            return missionOffers.map((o,i)=>{
+                const rows=[];
+                rows.push('<b>'+(i+1)+'. '+o.label+'</b>');
+                if(o.client)rows.push('   заказчик: '+o.client);
+                if(o.desc&&o.desc!==o.label)rows.push('   '+o.desc.slice(0,150));
+                if(o.task&&o.task!==o.label&&o.task!==o.desc)rows.push('   '+o.task);
+                rows.push('   награда: '+fmt(o.reward||0)+' КР · риск: '+riskWord2(o.risk)+(o.dist?(' · плечо: '+o.dist+' св.лет'):''));
+                return rows.join('\n');
+            }).join('\n\n');
+        }
+        const m=currentMission||{};
+        if(!m||!m.label)return 'Контракт ещё не выбран';
+        const rows=[];
+        rows.push('<b>Заказчик:</b> '+(m.client||'—'));
+        if(m.desc)rows.push('<b>Суть:</b> '+m.desc);
+        if(m.task&&m.task!==m.label)rows.push('<b>Задача:</b> '+m.task);
+        if(m.dest)rows.push('<b>Пункт:</b> '+m.dest);
+        if(m.cargo&&m.cargo.name)rows.push('<b>Груз:</b> '+m.cargo.name+(m.cargo.t?(' · '+m.cargo.t+' т'):''));
+        if(m.passenger&&m.passenger.n)rows.push('<b>Пассажиры:</b> '+m.passenger.n);
+        rows.push('<b>Награда:</b> '+fmt(m.reward||0)+' КР'+(m.bonus?(' (бонус: '+m.bonus.cond+', +'+Math.round((m.bonus.pct||0)*100)+'%)'):''));
+        if(m.risk)rows.push('<b>Риск:</b> '+riskWord(m.risk));
+        if(m.dist)rows.push('<b>Плечо:</b> '+m.dist+' св.лет');
+        return rows.join('\n');
+    }
+    if(kind==='jettison'){
+        const n=(cargoList||[]).length;
+        const w=(typeof holdWeight==='function')?holdWeight():0;
+        return '<b>В трюме:</b> '+n+' поз. · '+w+' т\n<b>Доставка:</b> '+((currentMission&&currentMission.dest)||'—')+'\n<b>Сброс:</b> корпус легче, но груз и часть оплаты теряем';
+    }
+    if(kind==='rescue'){
+        return '<b>Сигнал бедствия</b> в двух часах хода\n<b>Наше состояние:</b> топливо '+Math.round(fuelPct)+'%, корпус '+Math.round(hullPct)+'%\n<b>Цена помощи:</b> отклонение от курса, задержка рейса';
+    }
+    if(kind==='route'){
+        const d=(typeof legDist!=='undefined')?legDist.toFixed(1):'—';
+        return '<b>Плечо:</b> '+d+' св.лет\n<b>Напрямую:</b> ближе, но риск боевого контакта выше\n<b>Обход:</b> дольше и дороже по топливу, зато корпус целее';
+    }
+    if(kind==='contact'){
+        return '<b>Рядом чужой борт</b> без опознавания\n<b>Контакт:</b> сведения, работа, иногда помощь\n<b>Риск:</b> намерения неизвестны';
+    }
+    if(kind==='upgrade'){
+        return '<b>Стоимость:</b> 8 000 КР\n<b>Ход:</b> быстрее переходы\n<b>Защита:</b> крепче корпус в бою';
+    }
+    return '';
+}
+// ---- предложения с биржи: капитан приносит 2-3 контракта, команда выбирает ----
+let missionOffers=[];
+function snapshotOfferState(){
+    return {
+        cargo:JSON.parse(JSON.stringify(cargoList||[])),
+        pax:JSON.parse(JSON.stringify(passengerList||[])),
+        mission:currentMission?JSON.parse(JSON.stringify(currentMission)):null,
+        region:regionGlow,
+        main:Object.assign({},mainShown)
+    };
+}
+function restoreOfferState(s){
+    cargoList=s.cargo;passengerList=s.pax;currentMission=s.mission;regionGlow=s.region;
+}
+function applyOffer(idx){
+    const o=missionOffers[idx];
+    if(!o)return false;
+    cargoList=JSON.parse(JSON.stringify(o.cargo||[]));
+    passengerList=JSON.parse(JSON.stringify(o.pax||[]));
+    currentMission=JSON.parse(JSON.stringify(o.mission||{}));
+    if(currentMission&&currentMission.main)mainShown[currentMission.era||curEra()]=1;
+    updateHold();updateMissionPanel();
+    return true;
+}
+function offerFromState(st){
+    const m=st.mission||{};
+    return {
+        label:m.label||'контракт',dest:m.dest||'',reward:m.reward||0,risk:m.risk||2,dist:m.dist||0,
+        client:m.client||'',task:m.task||'',desc:m.desc||'',cargo:st.cargo,pax:st.pax,mission:m
+    };
+}
+function makeMissionOffers(){
+    const base=snapshotOfferState();
+    let offers=[offerFromState(base)];
+    const seen={};
+    seen[offers[0].label]=1;
+    const _aj=addJournal,_sb=showBanner,_cr=crewReact;
+    try{
+        addJournal=()=>null;showBanner=()=>{};crewReact=()=>{};
+        for(let i=0;i<5&&offers.length<3;i++){
+            try{generateMission()}catch(e){}
+            const st=snapshotOfferState();
+            const o=offerFromState(st);
+            if(o.label&&!seen[o.label]){seen[o.label]=1;offers.push(o)}
+            restoreOfferState(base);
+        }
+    }finally{
+        addJournal=_aj;showBanner=_sb;crewReact=_cr;
+        restoreOfferState(base);
+    }
+    missionOffers=offers.slice(0,3);
+    return missionOffers;
 }
 function openDecision(kind){
     if(pendingDecision)return;
@@ -5308,7 +5445,7 @@ function openDecision(kind){
     const q=spec.ask[Math.floor(Math.random()*spec.ask.length)];
     // голосуют все: у каждого есть носимый коммуникатор, даже если человек занят на корабле
     const busy=[];
-    pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+10000};
+    pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+15000};
     chatHeat(90000);
     // кто выскажется — от двух человек до всех, кто на связи
     const pool=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0&&w!=='KEP');
@@ -5339,8 +5476,8 @@ function openDecision(kind){
         pendingDecision.vote=preVote.id;
         preVote=null;
     }
-    showVoteCard(q,options);
-    pendingDecision.timer=setTimeout(()=>resolveDecision(),10000);
+    showVoteCard(q,options,voteDetails(kind));
+    pendingDecision.timer=setTimeout(()=>resolveDecision(),15000);
 }
 
 const POOL_VOTE={
@@ -5460,10 +5597,17 @@ function resolveDecision(){
             showBanner('ОТКАЗ ОТ КОНТРАКТА','red',4500);
             setTimeout(()=>aiMoment('команда отказалась от контракта, идём порожняком'),700);
         }else{
-            addJournal('КОНТРАКТ: приняли — '+lab+' (решение команды)','good');
+            let chosen=null;
+            const mm=/^offer(\d+)$/.exec(String(winner||''));
+            if(mm&&missionOffers.length){
+                const idx=parseInt(mm[1],10);
+                if(applyOffer(idx))chosen=missionOffers[idx];
+            }
+            addJournal('КОНТРАКТ: приняли — '+(chosen?chosen.label:lab)+' (решение команды)','good');
             showBanner('КОНТРАКТ ПРИНЯТ','cyan',4000);
             setTimeout(()=>aiMoment('команда взяла контракт, грузимся и выходим, пока окно открыто'),700);
         }
+        missionOffers=[];
     }else if(d.kind==='fuel'){
         if(winner==='now'){
             const add=22+Math.floor(Math.random()*14);
