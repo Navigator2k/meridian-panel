@@ -1640,6 +1640,20 @@ const EXTERN={
 };
 // ---- участники канала: экипаж, пассажиры, внешние (диспетчеры, капитаны бортов) ----
 // У каждого участника — своя пометка, чтобы было видно, кто это в эфире.
+// кто как говорит: у каждого внешнего участника свой характер подачи
+const EXT_TONE={
+    DPH:'сухо, по службе, короткими фразами',
+    LCH:'спокойно, с лоцманской сноровкой и присказками',
+    CUS:'казённо, с придирками и формулярами',
+    CPT:'устало и прямо, как капитан, который сам всё это видел',
+    BDZ:'горячо, с инженерным азартом',MDV:'мягко, с медицинской жалостью',
+    AGR:'по-крестьянски, с заботой о своём хозяйстве',ONN:'по-военному чётко',
+    UN1:'с командной усталостью',MZO:'отстранённо, как наблюдатель',
+    RCE:'деловито, с цифрами',RVK:'осторожно, недосказанно',LCY:'с опаской, тихо',
+    RFG:'торопливо, как курьер с опозданием',DSV:'зло, с обидой',TSO:'по-чиновничьи гладко',
+    DRM:'жёстко, как командир',KOR:'восторженно, по-научному',TEZ:'сдержанно',
+    TNK:'холодно, с хищной точностью',FIL:'сдержанно, с горечью',GHL:'деловито'
+};
 // роли внешних участников — так, как их видит человек в канале
 const EXT_ROLE={
     DPH:'диспетчер станции',LCH:'лоцман станции',CUS:'таможенный оператор',
@@ -1663,6 +1677,13 @@ function extNameFor(who){
     extCast[who]={name:pool[Math.floor(Math.random()*pool.length)]};
     return extCast[who];
 }
+// попутный борт: свой капитан со своим кораблём и своим маршрутом
+const PASSING_SHIPS=['«Вега-7»','«СИГ-9»','«Молот-2»','«Пыль»','«Кассиопея»','«Тихон»','«Пламя-9»','«Резец»'];
+function passingShipName(){
+    if(!extCast.SHIP)extCast.SHIP={};
+    if(!extCast.SHIP.ship)extCast.SHIP.ship=PASSING_SHIPS[Math.floor(Math.random()*PASSING_SHIPS.length)];
+    return extCast.SHIP.ship;
+}
 // пассажиры на борту — они тоже могут говорить в канале
 function paxActors(){
     return passengerList.slice(0,4).map((p,i)=>({
@@ -1673,11 +1694,17 @@ function paxActors(){
 function actorInfo(who){
     if(!who)return null;
     if(who==='ME')return {full:userName||'ВЫ',color:'#ffcc66',glyph:'▸',me:true};
+    // капитан попутного борта на переходе
+    if(who==='SHIP'){
+        const c=extNameFor('SHIP');
+        return {full:c.name,color:'#c8d8ff',glyph:'◬',tag:'[капитан корабля '+passingShipName()+']',ext:true};
+    }
     // капитан чужого борта: своё имя и название корабля, у которого он капитан
     if(who==='CPT'){
-        const ship=(typeof combatEnemy!=='undefined'&&combatEnemy&&combatEnemy.name)?combatEnemy.name:'неизвестный борт';
+        const shipRaw=(typeof combatEnemy!=='undefined'&&combatEnemy&&combatEnemy.name)?combatEnemy.name:'';
+        const ship=String(shipRaw).replace(/^КОРАБЛЬ\s*/i,'');
         const c=extNameFor('CPT');
-        return {full:c.name,color:'#ffb0b0',glyph:'◬',tag:'[капитан корабля «'+ship+'»]',ext:true};
+        return {full:c.name,color:'#ffb0b0',glyph:'◬',tag:ship?('[капитан корабля '+ship+']'):'[капитан неизвестного борта]',ext:true};
     }
     const pax=paxActors().filter(p=>p.who===who)[0];
     if(pax)return pax;
@@ -4234,12 +4261,27 @@ function ambientCast(){
     }
     return s;
 }
+// попутный борт на переходе: капитан выходит на связь и делится тем, что знает
+function passingShip(){
+    guestEnter('SHIP');
+    const g=localGossip();
+    aiSay('event',{
+        event:'в пути рядом идёт попутный борт '+passingShipName()+', его капитан выходит на связь: короткий обмен по курсу'+
+              (g.world?'; он может упомянуть событие эпохи: '+g.world:'')+
+              (g.local?'; или местное событие: '+g.local:''),
+        scene:chatScene()
+    },null,{base:300,step:1600,jitter:800,prio:false});
+    // канал с попутным бортом не вечен: через минуту-две он уходит
+    setTimeout(()=>{guestLeave('SHIP')},45000+Math.random()*45000);
+}
 function emitChatLine(){
     // фон: реплику пишет модель под текущую обстановку.
     // Заготовки включаются только если модель недоступна.
     const atStation=state===ShipState.DOCKED||state===ShipState.CARGO_OPS||state===ShipState.APPROACH||state===ShipState.DOCKING||state===ShipState.UNDOCKING;
     const r=Math.random();
     if(atStation&&r<0.25){stationVoice();return}
+    // на переходе изредка рядом идёт попутный борт — его капитан тоже приносит новости
+    if(!atStation&&state===ShipState.TRANSIT&&r<0.07&&!chatGuests.some(g=>g.who==='SHIP')){passingShip();return}
     if(r<0.12){
         const kind=['meteor','star','cargo','lock','star','station'][Math.floor(Math.random()*6)];
         const who=onDuty[Math.floor(Math.random()*onDuty.length)];
@@ -4308,9 +4350,13 @@ window.SIM={curEra,simWorldDays,days:simWorldDays,newWorld:startNewWorld};
 function stationVoice(){
     const st=(currentStation||'станции').replace('СТАНЦИЯ «','').replace('«','').replace('»','')||'станции';
     const berth=5+Math.floor(Math.random()*26);
-    // указания по стыковке даёт модель: диспетчер или лоцман, по обстановке
+    // диспетчер в канале: по ходу дела он делится местными событиями
+    guestEnter('DPH');
+    const g=localGossip();
     aiSay('event',{
-        event:'подход к станции '+st+', стыковочный пирс '+berth+': диспетчер или лоцман даёт указания по швартовке',
+        event:'подход к станции '+st+', стыковочный пирс '+berth+': диспетчер ведёт швартовку'+
+              (g.local?'; между делом он может упомянуть местное событие: '+g.local:'')+
+              (g.world?'; а также событие эпохи: '+g.world:''),
         scene:chatScene()
     },null,{base:400,step:1800,jitter:900});
 }
@@ -4444,6 +4490,18 @@ function chatRemember(who,text,meta){
     if(chatHistory.length>60)chatHistory.shift();
 }
 
+// сюжет мира — не только через сводку новостей: внешние участники
+// передают его в бытовом разговоре, со своим отношением
+function localGossip(){
+    const st=String(currentStation||'');
+    const key=(LOCAL_NEWS[st]?st:(LOCAL_NEWS[nextStation]?String(nextStation):''));
+    const px=key&&LOCAL_NEWS[key]?LOCAL_NEWS[key]:[];
+    const local=px.length?px[Math.floor(Math.random()*px.length)].text:'';
+    // одно событие эпохи: то, что сейчас «на слуху» в системе
+    const pool=(typeof standaloneNews!=='undefined'?standaloneNews:[]).filter(n=>!n.era||n.era===curEra());
+    const world=pool.length?pool[Math.floor(Math.random()*pool.length)].text:'';
+    return {local:local,world:world,era:ERA_NAMES[curEra()]||'',day:simWorldDays()};
+}
 function chatScene(){
     return {
         me:userName||null,
@@ -4456,8 +4514,9 @@ function chatScene(){
         progress:Math.round(transitProgress),
         duty:(typeof onDuty!=='undefined'?onDuty.slice():null),
         // внешние участники и пассажиры: модель может говорить и от них
-        guests:chatGuests.map(g=>({who:g.who,name:g.label,role:g.tag||''})),
-        paxList:paxActors().map(p=>({who:p.who,name:p.full,role:p.tag})),
+        guests:chatGuests.map(g=>({who:g.who,name:g.label,role:g.tag||'',tone:(EXT_TONE[g.who]||'')})),
+        paxList:paxActors().map(p=>({who:p.who,name:p.full,role:p.tag,tone:'пассажир'})),
+        gossip:localGossip(),
         decision:pendingDecision?{kind:pendingDecision.kind,options:pendingDecision.options.map(o=>o.label)}:null,
         history:chatHistory.slice(-12)
     };
