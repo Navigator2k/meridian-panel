@@ -167,6 +167,18 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .chat-name button{background:rgba(255,204,102,0.14);border:1px solid rgba(255,204,102,0.45);color:var(--gold);font-family:'Orbitron',sans-serif;font-size:9.5px;font-weight:700;padding:4px 8px;border-radius:2px;cursor:pointer;letter-spacing:1px}
 .chat-name button:hover{background:rgba(255,204,102,0.25)}
 .chat-name.hidden{display:none}
+/* плашка регистрации: висит посреди ленты чата, перекрывает часть сообщений,
+   но лента под ней читается и проматывается; строка ввода остаётся заблокированной */
+.chat-log-wrap{position:relative;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}
+.chat-log-wrap .chat-log{flex:1}
+.name-plate{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:86%;max-width:430px;min-height:112px;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:10px 14px;background:rgba(24,18,6,0.94);border:1px solid rgba(255,204,102,0.45);box-shadow:0 0 26px rgba(0,0,0,0.6);z-index:6}
+.name-plate-t{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.4px;color:var(--gold);text-align:center}
+.name-plate-note{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:.4px;color:rgba(255,204,102,0.45);text-align:center}
+.name-plate.hidden{display:none}
+.name-plate .chat-name{border-top:none;background:none;padding:0}
+/* сама плашка прозрачна для колеса мыши: листать сообщения можно и сквозь неё */
+.name-plate{pointer-events:none}
+.name-plate input,.name-plate button{pointer-events:auto}
 .chat-input{display:flex;gap:5px;align-items:center;padding:6px 10px 7px;border-top:1px solid rgba(0,229,255,0.10);background:rgba(0,229,255,0.015);flex-shrink:0}
 .chat-input input{flex:1;min-width:0;background:rgba(2,12,24,0.85);border:1px solid rgba(0,229,255,0.18);border-radius:2px;color:rgba(215,235,235,0.92);font-family:'Rajdhani',sans-serif;font-size:11.5px;letter-spacing:.3px;padding:4px 7px;outline:none;transition:border-color .2s ease,box-shadow .2s ease}
 .chat-input input::placeholder{color:rgba(0,229,255,0.30);letter-spacing:.4px}
@@ -335,10 +347,16 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 <div class="bays right">
     <div class="hud grow30">
         <div class="hdr"><span class="pt">Чат команды</span><span class="ai-chip" id="aiChip" title="Подключить модель">ИИ: выкл</span><span class="whoami" id="chatWho" title="Сменить имя"></span><span class="badge ok" id="crewBadge">В ЭФИРЕ</span></div>
-        <div class="pb chat-log" id="crewChat"></div>
-        <div class="chat-name hidden" id="nameRow">
-            <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Твоё имя — как к тебе обращаться">
-            <button id="nameOk" type="button">ВОЙТИ</button>
+        <div class="chat-log-wrap">
+            <div class="pb chat-log" id="crewChat"></div>
+            <div class="name-plate hidden" id="nameOverlay">
+                <span class="name-plate-t">ПРЕДСТАВЬСЯ КОМАНДЕ</span>
+                <div class="chat-name" id="nameRow">
+                    <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Твоё имя — как к тебе обращаться">
+                    <button id="nameOk" type="button">ВОЙТИ</button>
+                </div>
+                <span class="name-plate-note">пока не назвался — писать в эфир нельзя</span>
+            </div>
         </div>
         <div class="chat-input" id="chatInputRow">
             <div id="chatInput" class="chat-edit locked" contenteditable="false" spellcheck="false" data-ph="Сначала представься команде"></div>
@@ -1288,6 +1306,18 @@ function logClock(){
     return 'T+'+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
 }
 let lastJText='';
+// журнал: свежая запись сверху. Отмотался в историю — позиция держится
+// 5 секунд (вставки сверху компенсируются), потом возврат к свежей записи
+let jDetachedAt=0,jSnapTimer=0;
+function journalScrollWatch(){
+    const jl=document.getElementById('journalLog');
+    if(!jl)return;
+    if(jl.scrollTop<=2){jDetachedAt=0;if(jSnapTimer){clearTimeout(jSnapTimer);jSnapTimer=0}}
+    else if(!jDetachedAt){
+        jDetachedAt=Date.now();
+        jSnapTimer=setTimeout(()=>{jDetachedAt=0;jSnapTimer=0;jl.scrollTop=0},5000);
+    }
+}
 function addJournal(text,cls){
     if(text===lastJText)return null;
     lastJText=text;
@@ -1298,6 +1328,9 @@ function addJournal(text,cls){
     el.className='ji '+(cls||'')+' newest';
     el.innerHTML='<span class="jt">'+logClock()+'</span>'+text;
     jl.prepend(el);
+    // читаемое место держится 5 секунд, потом лента возвращается к свежей записи
+    if(jDetachedAt&&Date.now()-jDetachedAt<5000)jl.scrollTop+=el.offsetHeight;
+    else{jDetachedAt=0;jl.scrollTop=0}
     journal.push({text:el.innerHTML,cls});
     if(journal.length>MAXJ)journal.shift();
     trimFeed(jl,80,true);
@@ -1628,6 +1661,19 @@ function pumpChat(){
         if(chatQueue.length)setTimeout(pumpChat,600);
     }
 }
+// отмотка ленты: читатель, поднявшийся выше низа, держит позицию 5 секунд
+// (свежие реплики вид не двигают), потом лента принудительно возвращается вниз
+let chatDetachedAt=0,chatSnapTimer=0;
+function chatScrollWatch(){
+    const log=document.getElementById('crewChat');
+    if(!log)return;
+    const near=log.scrollHeight-log.scrollTop-log.clientHeight<80;
+    if(near){chatDetachedAt=0;if(chatSnapTimer){clearTimeout(chatSnapTimer);chatSnapTimer=0}}
+    else if(!chatDetachedAt){
+        chatDetachedAt=Date.now();
+        chatSnapTimer=setTimeout(()=>{chatDetachedAt=0;chatSnapTimer=0;log.scrollTop=log.scrollHeight},5000);
+    }
+}
 function pumpChatJob(){
     const job=chatQueue.shift();
     const log=document.getElementById('crewChat');
@@ -1637,12 +1683,11 @@ function pumpChatJob(){
     el.className='cmsg show'+(EXTERN[job.who]?' ext':'');
     el.innerHTML=`<div class="cmsg-hdr"><span class="ctime">${t}</span><span class="cwho" data-who="${job.who}" title="Вставить имя в сообщение" style="color:${sp.color}">${sp.glyph} ${sp.full}</span></div><span class="ctext"></span>`;
     if(job.meta&&job.meta.vote)el.classList.add('vote');
-    // лента прокручивается: держим низ, только если человек не ушёл читать
-    // историю выше — тогда новое не дёргает вид
-    const nearBottom=()=>log.scrollHeight-log.scrollTop-log.clientHeight<80;
+    // лента прокручивается: держим низ, пока человек не ушёл читать историю.
+    // при отмотке позиция держится 5 секунд, потом принудительный возврат вниз
     log.appendChild(el);
     trimFeed(log);
-    if(nearBottom())log.scrollTop=log.scrollHeight;
+    if(!(chatDetachedAt&&Date.now()-chatDetachedAt<5000))log.scrollTop=log.scrollHeight;
     const bad=el.querySelector('.ctext');
     lastSpeaker=job.who;
     const crewBadge=document.getElementById('crewBadge');
@@ -1658,7 +1703,7 @@ function pumpChatJob(){
     const isPhoto=!!(job.meta&&job.meta.photo)||job.text.indexOf('<span class="cphoto">')===0;
     if(isPhoto){
         bad.innerHTML=job.text;
-        if(nearBottom())log.scrollTop=log.scrollHeight;
+        if(!(chatDetachedAt&&Date.now()-chatDetachedAt<5000))log.scrollTop=log.scrollHeight;
         if(job.meta&&job.meta.photo)chatRemember(job.who,'[фото] '+(job.meta.cap||''),{photo:job.meta.photo,cap:job.meta.cap||''});
         else chatRemember(job.who,'[фото]');
         finish(false);
@@ -5058,6 +5103,8 @@ function applyChatMode(){
     const ni=document.getElementById('nameInput');
     if(who)who.textContent=userName?('вы: '+userName):'';
     if(row)row.classList.toggle('hidden',!namingMode);
+    const ovl=document.getElementById('nameOverlay');
+    if(ovl)ovl.classList.toggle('hidden',!namingMode);
     if(!inp)return;
     if(namingMode){
         inp.setAttribute('contenteditable','false');
@@ -5325,6 +5372,10 @@ if(!_savedWorld){
 
 // строка ввода: пользователь — полноправный член команды
 setupChatInput();
+
+// отмотка чата и журнала: 5 секунд якоря, потом возврат к свежей записи
+document.getElementById('crewChat').addEventListener('scroll',chatScrollWatch);
+document.getElementById('journalLog').addEventListener('scroll',journalScrollWatch);
 
 // знакомство экипажа — только в первый раз, при следующих заходах смена уже идёт
 if(!_savedWorld){chatRush(120000);introChat();}
