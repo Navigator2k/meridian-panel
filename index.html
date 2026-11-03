@@ -174,11 +174,11 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 /* закреплённое голосование капитана: заголовок, варианты-кнопки, таймер */
 .vote-card{flex-shrink:0;margin:0 0 4px;padding:6px 8px 8px;background:rgba(30,22,4,0.94);border:1px solid rgba(255,204,102,0.45);border-left:3px solid var(--gold);box-shadow:0 0 16px rgba(255,204,102,0.12);z-index:5}
 .vote-card.hidden{display:none}
-.vc-hdr{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
-.vc-who{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--gold)}
+.vc-hdr{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
+.vc-who{justify-self:start;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--gold)}
 .vc-pin{font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;letter-spacing:.9px;color:rgba(255,204,102,0.8);border:1px solid rgba(255,204,102,0.4);border-radius:2px;padding:0 3px}
-.vc-timer{margin-left:auto;font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:rgba(255,204,102,0.9);border:1px solid rgba(255,204,102,0.35);border-radius:2px;padding:0 4px;min-width:18px;text-align:center}
-.vc-close{background:none;border:1px solid rgba(255,204,102,0.35);color:rgba(255,204,102,0.85);font-family:'Orbitron',sans-serif;font-size:10px;line-height:1;padding:1px 5px;border-radius:2px;cursor:pointer}
+.vc-timer{justify-self:center;font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:rgba(255,204,102,0.9);border:1px solid rgba(255,204,102,0.35);border-radius:2px;padding:0 4px;min-width:18px;text-align:center}
+.vc-close{justify-self:end;background:none;border:1px solid rgba(255,204,102,0.35);color:rgba(255,204,102,0.85);font-family:'Orbitron',sans-serif;font-size:10px;line-height:1;padding:1px 6px;border-radius:2px;cursor:pointer}
 .vc-close:hover{background:rgba(255,204,102,0.18);color:var(--gold)}
 .vc-q{font-family:'Rajdhani',sans-serif;font-size:11.5px;line-height:1.3;color:rgba(255,240,215,0.95);margin:4px 0 4px}
 .vc-desc{font-family:'Rajdhani',sans-serif;font-size:10.5px;line-height:1.38;color:rgba(215,235,240,0.86);margin:0 0 6px;padding:4px 6px;border-left:2px solid rgba(0,229,255,0.28);background:rgba(0,229,255,0.045);white-space:pre-line}
@@ -190,6 +190,8 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .vc-btn:disabled{cursor:default;opacity:.6}
 .vc-btn.picked:disabled{opacity:1}
 .vc-res{font-family:'Rajdhani',sans-serif;font-size:10.5px;line-height:1.35;color:rgba(225,245,235,0.92);white-space:pre-line}
+.vc-final{display:block;margin-top:5px;padding-top:4px;border-top:1px solid rgba(255,204,102,0.25);font-family:'Orbitron',sans-serif;font-size:8.5px;letter-spacing:.6px;color:rgba(255,238,210,0.9)}
+.vc-final b{color:var(--gold)}
 .name-plate{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:90%;max-width:430px;min-height:112px;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:12px 14px;background:rgba(24,18,6,0.80);border:1px solid rgba(255,204,102,0.45);box-shadow:0 0 26px rgba(0,0,0,0.6);z-index:6}
 .name-plate-t{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.4px;color:var(--gold);text-align:center}
 .name-plate-lead{font-family:'Rajdhani',sans-serif;font-size:10.5px;letter-spacing:.3px;line-height:1.3;color:rgba(255,238,210,0.88);text-align:center}
@@ -397,9 +399,7 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
         <div class="chat-log-wrap">
             <div class="vote-card hidden" id="voteCard">
                 <div class="vc-hdr">
-                    <span class="ctime" id="vcTime">--:--:--</span>
-                    <span class="vc-who">◆ Игорь Рудин</span>
-                    <span class="vc-pin">ЗАКРЕПЛЕНО</span>
+                    <span class="vc-who" id="vcWho">◆ Игорь Рудин</span>
                     <span class="vc-timer" id="vcTimer">20</span>
                     <button type="button" class="vc-close" id="vcClose" title="Закрыть">×</button>
                 </div>
@@ -5249,6 +5249,8 @@ function showVoteCard(q,options,details){
     const dEl=document.getElementById('vcDesc');
     const oEl=document.getElementById('vcOpts');
     const rEl=document.getElementById('vcRes');
+    const whoEl=document.getElementById('vcWho');
+    if(whoEl)whoEl.textContent='◆ Игорь Рудин';
     if(rEl){rEl.classList.add('hidden');rEl.textContent=''}
     if(dEl)dEl.innerHTML=details||'';
     const tm=document.getElementById('vcTime');
@@ -5302,10 +5304,13 @@ function voteResultsHTML(d,votes,winner){
     });
     const rows=Object.keys(groups).map(id=>({id:id,n:groups[id].length,names:groups[id]}))
         .sort((a,b)=>b.n-a.n||String(a.id).localeCompare(String(b.id)));
-    return rows.map(r=>{
+    const lines=rows.map(r=>{
         const line=labOf(r.id)+' ('+r.n+') — '+r.names.join(', ');
         return (r.id===winner)?('<b>'+line+'</b>'):line;
-    }).join('<br>');
+    });
+    if(!(d&&d.vote)&&userName)lines.push('<i>'+userName+' — воздержался</i>');
+    lines.push('<span class="vc-final">Итог: <b>'+labOf(winner)+'</b></span>');
+    return lines.join('<br>');
 }
 // результаты висят в закреплённой карточке 7 секунд, затем карточка уходит
 function showVoteResults(d,votes,winner){
@@ -5314,6 +5319,8 @@ function showVoteResults(d,votes,winner){
     const opts=document.getElementById('vcOpts');
     const res=document.getElementById('vcRes');
     const timer=document.getElementById('vcTimer');
+    const whoEl=document.getElementById('vcWho');
+    if(whoEl)whoEl.textContent='Результаты:';
     if(opts)opts.innerHTML='';
     if(res){
         res.innerHTML=voteResultsHTML(d,votes,winner);
@@ -5634,9 +5641,23 @@ function resolveDecision(){
             transitProgress=Math.max(0,transitProgress-6);
             const reward=5000+Math.floor(Math.random()*6000);
             credits+=reward;
-            addJournal('ПОМОЩЬ: отклонились к аварийному судну — экипаж спасён, +'+fmt(reward)+' КР, минус время','good');
-            showBanner('ЭКИПАЖ СПАСЁН','gold',4500);
-            setTimeout(()=>aiMoment('подошли к аварийному судну, на борту двое живых, один в шоке'),1400);
+            addJournal('СПАСЕНИЕ: отклонились к аварийному судну, на борту двое живых — начинаем эвакуацию','good');
+            showBanner('ЭВАКУАЦИЯ ПОТЕРПЕВШИХ','gold',4500);
+            setTimeout(()=>aiMoment('эвакуация потерпевших: двое живых, один в шоке — нужно решить, куда их везти'),1400);
+            setTimeout(()=>{
+                const dest=(currentMission&&currentMission.dest)||stations[0];
+                if(!(passengerList||[]).some(p=>p.survivor)){
+                    passengerList.push({name:'П. Граймс',role:'спасённый',dest:dest,fare:0,survivor:true});
+                    passengerList.push({name:'К. Йошида',role:'спасённый',dest:dest,fare:0,survivor:true});
+                }
+                try{updateHold();updateMissionPanel()}catch(e){}
+                addJournal('СПАСЕНИЕ: двое потерпевших на борту, размещены в каюте — везём до '+dest,'good');
+                aiMoment('потерпевшие размещены в каюте, один приходит в себя — короткая реплика команды');
+            },20000);
+            setTimeout(()=>{
+                addJournal('СПАСЕНИЕ: врач осмотрел потерпевших, состояние стабильное, один просит связаться с родными','good');
+                aiMoment('один из спасённых просит связаться с родными — что отвечает команда');
+            },60000);
             updateCredits();
         }else{
             addJournal('ПОМОЩЬ: сигнал бедствия оставлен без ответа — решение команды','bad');
