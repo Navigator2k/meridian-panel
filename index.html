@@ -5161,7 +5161,7 @@ function decisionSpec(kind){
 // какая тема спора — зависит от обстановки, а не одна и та же
 function pickTransitDecision(){
     const pool=['route'];
-    if(fuelPct<70)pool.push('fuel');
+    // дозаправка — решение капитана, а не голосование: её здесь нет
     if(cargoList.length)pool.push('jettison');
     if(passengerList.length)pool.push('rescue');
     if(Math.random()<0.35)pool.push('contact');
