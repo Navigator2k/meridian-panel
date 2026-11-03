@@ -5224,7 +5224,8 @@ function postVoteResults(d,votes,busy,lab){
         const nm=(k==='ME')?(userName||'ВЫ'):((CREW[k]&&CREW[k].full)||k);
         rows.push(nm+' — «'+labOf(votes[k])+'»');
     });
-    (busy||[]).forEach(k=>{rows.push(((CREW[k]&&CREW[k].full)||k)+' — воздержался')});
+    const FEMALE={ZAR:1,LUS:1};
+    (busy||[]).forEach(k=>{rows.push(((CREW[k]&&CREW[k].full)||k)+(FEMALE[k]?' — воздержалась':' — воздержался'))});
     if(!(d&&d.vote)&&userName)rows.push(userName+' — воздержался');
     const counts={};
     Object.keys(votes).forEach(k=>{const v=votes[k];counts[v]=(counts[v]||0)+1});
