@@ -1366,11 +1366,14 @@ let jDetachedAt=0,jSnapTimer=0;
 function journalScrollWatch(){
     const jl=document.getElementById('journalLog');
     if(!jl)return;
-    if(jl.scrollTop<=2){jDetachedAt=0;if(jSnapTimer){clearTimeout(jSnapTimer);jSnapTimer=0}}
-    else if(!jDetachedAt){
-        jDetachedAt=Date.now();
-        jSnapTimer=setTimeout(()=>{jDetachedAt=0;jSnapTimer=0;jl.scrollTop=0},5000);
+    if(jl.scrollTop<=2){
+        jDetachedAt=0;
+        if(jSnapTimer){clearTimeout(jSnapTimer);jSnapTimer=0}
+        return;
     }
+    jDetachedAt=Date.now();
+    if(jSnapTimer)clearTimeout(jSnapTimer);
+    jSnapTimer=setTimeout(()=>{jDetachedAt=0;jSnapTimer=0;jl.scrollTop=0},5000);
 }
 function addJournal(text,cls){
     if(text===lastJText)return null;
@@ -1796,11 +1799,28 @@ function looksLikeTelemetry(t){
     const talk=/(посмотри|скажи|как думаешь|давай|нужно|нужен|предлага|вопрос|решай|что делать|может|стоит|успева|рискн|давай)/i;
     return tech.test(s)&&nums&&!talk.test(s);
 }
+// модель иногда начинает реплику с имени самого автора — убираем такое обращение
+function stripSelfAddress(who,text){
+    let s=String(text||'');
+    const info=(CREW[who]||null);
+    if(!info)return s;
+    const names=[info.full];
+    if(CREW_SHORT[who])names.push(CREW_SHORT[who]);
+    for(const nm of names){
+        if(!nm)continue;
+        const esc=nm.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+        const re=new RegExp('^\\s*'+esc+'\\s*[,:—-]\\s*','i');
+        if(re.test(s)){s=s.replace(re,'');break}
+    }
+    return s.charAt(0).toUpperCase()+s.slice(1);
+}
 function crewSay(who,text,prio,meta){
     const isPhoto=!!(meta&&meta.photo);
     const urgent=!!(meta&&meta.urgent);
     // техническая констатация — в бортжурнал, не в живой чат
     if(!isPhoto&&looksLikeTelemetry(text)){try{addJournal('СИСТЕМА: '+text)}catch(e){};return false}
+    // убираем обращение к самому себе, если модель его вставила
+    if(!isPhoto)text=stripSelfAddress(who,text);
     // фон не частит: между обычными репликами держим паузу, тревоги — вне лимита
     if(!prio&&!urgent&&!isPhoto){
         const now=Date.now();
@@ -1848,11 +1868,15 @@ function chatScrollWatch(){
     const log=document.getElementById('crewChat');
     if(!log)return;
     const near=log.scrollHeight-log.scrollTop-log.clientHeight<80;
-    if(near){chatDetachedAt=0;if(chatSnapTimer){clearTimeout(chatSnapTimer);chatSnapTimer=0}}
-    else if(!chatDetachedAt){
-        chatDetachedAt=Date.now();
-        chatSnapTimer=setTimeout(()=>{chatDetachedAt=0;chatSnapTimer=0;log.scrollTop=log.scrollHeight},5000);
+    if(near){
+        chatDetachedAt=0;
+        if(chatSnapTimer){clearTimeout(chatSnapTimer);chatSnapTimer=0}
+        return;
     }
+    // отсчёт начинается заново после каждого движения: пока читаешь и листаешь — не дёргаем
+    chatDetachedAt=Date.now();
+    if(chatSnapTimer)clearTimeout(chatSnapTimer);
+    chatSnapTimer=setTimeout(()=>{chatDetachedAt=0;chatSnapTimer=0;log.scrollTop=log.scrollHeight},5000);
 }
 function pumpChatJob(){
     const job=chatQueue.shift();
@@ -5225,21 +5249,42 @@ function hideVoteCard(){
     if(card)card.classList.add('hidden');
 }
 // итоги — в ленту, как в обычном чате: кто что выбрал и кто воздержался
-function postVoteResults(d,votes,busy,lab){
+// итоги: строки по вариантам, варианты по убыванию голосов, победитель — полужирным
+function voteResultsHTML(d,votes,winner){
     const labOf=id=>((d.options.find(o=>o.id===id)||{}).label||id);
-    const rows=[];
+    const groups={};
     Object.keys(votes).forEach(k=>{
+        const v=votes[k];
         const nm=(k==='ME')?(userName||'ВЫ'):((CREW[k]&&CREW[k].full)||k);
-        rows.push(nm+' — «'+labOf(votes[k])+'»');
+        (groups[v]=groups[v]||[]).push(nm);
     });
-    const FEMALE={ZAR:1,LUS:1};
-    (busy||[]).forEach(k=>{rows.push(((CREW[k]&&CREW[k].full)||k)+(FEMALE[k]?' — была занята':' — был занят'))});
-    if(!(d&&d.vote)&&userName)rows.push(userName+' — воздержался');
-    const counts={};
-    Object.keys(votes).forEach(k=>{const v=votes[k];counts[v]=(counts[v]||0)+1});
-    const summary=Object.keys(counts).map(id=>labOf(id)+': '+counts[id]).join(', ');
-    const busyN=(busy||[]).length;
-    chatSys('ИТОГ ГОЛОСОВАНИЯ — '+lab+' ('+summary+(busyN?(', заняты и не участвовали: '+busyN):'')+')\n'+rows.join('\n'));
+    const rows=Object.keys(groups).map(id=>({id:id,n:groups[id].length,names:groups[id]}))
+        .sort((a,b)=>b.n-a.n||String(a.id).localeCompare(String(b.id)));
+    return rows.map(r=>{
+        const line=labOf(r.id)+' ('+r.n+') — '+r.names.join(', ');
+        return (r.id===winner)?('<b>'+line+'</b>'):line;
+    }).join('<br>');
+}
+// результаты висят в закреплённой карточке 7 секунд, затем карточка уходит
+function showVoteResults(d,votes,winner){
+    const card=document.getElementById('voteCard');
+    if(!card)return;
+    const opts=document.getElementById('vcOpts');
+    const res=document.getElementById('vcRes');
+    const timer=document.getElementById('vcTimer');
+    if(opts)opts.innerHTML='';
+    if(res){
+        res.innerHTML=voteResultsHTML(d,votes,winner);
+        res.classList.remove('hidden');
+    }
+    if(voteTickTimer){clearInterval(voteTickTimer);voteTickTimer=0}
+    if(timer)timer.textContent='7';
+    let left=7;
+    voteTickTimer=setInterval(()=>{
+        left--;
+        if(timer)timer.textContent=String(Math.max(0,left));
+        if(left<=0){clearInterval(voteTickTimer);voteTickTimer=0;hideVoteCard()}
+    },1000);
 }
 function openDecision(kind){
     if(pendingDecision)return;
@@ -5261,13 +5306,8 @@ function openDecision(kind){
         }
     }
     const q=spec.ask[Math.floor(Math.random()*spec.ask.length)];
-    // голосование видят только те, кто сейчас в чате: от одного до трёх человек
-    // могут быть заняты на корабле и в голосовании не участвуют
-    const crewAll=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0);
-    const others=crewAll.filter(w=>w!=='KEP');
-    const busyCount=Math.max(1,Math.min(3,1+Math.floor(Math.random()*3)));
-    const busy=others.slice().sort(()=>Math.random()-0.5).slice(0,Math.min(busyCount,others.length));
-    busy.forEach(w=>{delete stances[w]});
+    // голосуют все: у каждого есть носимый коммуникатор, даже если человек занят на корабле
+    const busy=[];
     pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+10000};
     chatHeat(90000);
     // кто выскажется — от двух человек до всех, кто на связи
@@ -5410,18 +5450,17 @@ function resolveDecision(){
     let winner=best,how='по голосам';
     if(tie){winner=d.stances.KEP;how='голос капитана при равенстве'}
     const lab=(d.options.find(o=>o.id===winner)||{}).label||winner;
-    hideVoteCard();
-    try{postVoteResults(d,votes,d.busy||[],lab)}catch(e){}
+    try{showVoteResults(d,votes,winner)}catch(e){}
     if(d.kind==='cargo'){
         if(winner==='skip'){
             cargoList=[];passengerList=[];
             currentMission={type:'IDLE',label:'ПЕРЕХОД ПОРОЖНЯКОМ',dest:(currentMission&&currentMission.dest)||stations[0],reward:0,task:'Свободный переход без контракта'};
             updateHold();updateMissionPanel();
-            addJournal('КОНТРАКТ: отклонён — решили не брать ('+lab+', '+how+')','bad');
+            addJournal('КОНТРАКТ: отклонили — '+lab+' (решение команды)','bad');
             showBanner('ОТКАЗ ОТ КОНТРАКТА','red',4500);
             setTimeout(()=>aiMoment('команда отказалась от контракта, идём порожняком'),700);
         }else{
-            addJournal('КОНТРАКТ: принят — '+lab+' ('+how+')','good');
+            addJournal('КОНТРАКТ: приняли — '+lab+' (решение команды)','good');
             showBanner('КОНТРАКТ ПРИНЯТ','cyan',4000);
             setTimeout(()=>aiMoment('команда взяла контракт, грузимся и выходим, пока окно открыто'),700);
         }
