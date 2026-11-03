@@ -178,6 +178,8 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .vc-who{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--gold)}
 .vc-pin{font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;letter-spacing:.9px;color:rgba(255,204,102,0.8);border:1px solid rgba(255,204,102,0.4);border-radius:2px;padding:0 3px}
 .vc-timer{margin-left:auto;font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:rgba(255,204,102,0.9);border:1px solid rgba(255,204,102,0.35);border-radius:2px;padding:0 4px;min-width:18px;text-align:center}
+.vc-close{background:none;border:1px solid rgba(255,204,102,0.35);color:rgba(255,204,102,0.85);font-family:'Orbitron',sans-serif;font-size:10px;line-height:1;padding:1px 5px;border-radius:2px;cursor:pointer}
+.vc-close:hover{background:rgba(255,204,102,0.18);color:var(--gold)}
 .vc-q{font-family:'Rajdhani',sans-serif;font-size:11.5px;line-height:1.3;color:rgba(255,240,215,0.95);margin:4px 0 4px}
 .vc-desc{font-family:'Rajdhani',sans-serif;font-size:10.5px;line-height:1.38;color:rgba(215,235,240,0.86);margin:0 0 6px;padding:4px 6px;border-left:2px solid rgba(0,229,255,0.28);background:rgba(0,229,255,0.045);white-space:pre-line}
 .vc-desc b{color:rgba(255,238,210,0.96)}
@@ -396,7 +398,8 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
                     <span class="ctime" id="vcTime">--:--:--</span>
                     <span class="vc-who">◆ Игорь Рудин</span>
                     <span class="vc-pin">ЗАКРЕПЛЕНО</span>
-                    <span class="vc-timer" id="vcTimer">10</span>
+                    <span class="vc-timer" id="vcTimer">20</span>
+                    <button type="button" class="vc-close" id="vcClose" title="Закрыть">×</button>
                 </div>
                 <div class="vc-q" id="vcQ"></div>
                 <div class="vc-desc" id="vcDesc"></div>
@@ -4510,7 +4513,7 @@ function crewPrompt(p){
         '3) Не выдумывай события, которых нет в обстановке; если не знаешь — скажи честно.',
         '4) Если тема вне мира корабля (спорт, политика, быт Земли, интернет) — удивись и верни разговор к рейсу.',
         '5) Реплики короткие: 1–2 предложения. Иногда 2–3 участника, иногда один.',
-        '6) Обращайся к игроку по имени, только если реплика адресована ему; ко всем — без обращения.',
+        '6) Имя в начале — редкое исключение: только когда обращаешься лично и без адреса непонятно, к кому. В обычном разговоре имени нет.',
         '7) Имя пиши полностью, как в списке персонажей, без кодов и сокращений (не «KEP», не «FIN», не «Лус»). К себе не обращайся. Только русские слова, без вставок других языков.',
         '8) Чат живой: не пересказывай телеметрию (скорость, курс, дистанция, проценты) — это бортжурнал. О технике говори только если есть вопрос или что решать.',
         'Персонажи:\n'+who,
@@ -5312,8 +5315,8 @@ function showVoteResults(d,votes,winner){
         res.classList.remove('hidden');
     }
     if(voteTickTimer){clearInterval(voteTickTimer);voteTickTimer=0}
-    if(timer)timer.textContent='10';
-    let left=10;
+    if(timer)timer.textContent='15';
+    let left=15;
     voteTickTimer=setInterval(()=>{
         left--;
         if(timer)timer.textContent=String(Math.max(0,left));
@@ -5445,7 +5448,7 @@ function openDecision(kind){
     const q=spec.ask[Math.floor(Math.random()*spec.ask.length)];
     // голосуют все: у каждого есть носимый коммуникатор, даже если человек занят на корабле
     const busy=[];
-    pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+15000};
+    pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+20000};
     chatHeat(90000);
     // кто выскажется — от двух человек до всех, кто на связи
     const pool=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0&&w!=='KEP');
@@ -5477,7 +5480,7 @@ function openDecision(kind){
         preVote=null;
     }
     showVoteCard(q,options,voteDetails(kind));
-    pendingDecision.timer=setTimeout(()=>resolveDecision(),15000);
+    pendingDecision.timer=setTimeout(()=>resolveDecision(),20000);
 }
 
 const POOL_VOTE={
@@ -5939,6 +5942,9 @@ function setupChatInput(){
     // подтверждение прочтения: плашка ждёт кнопку, а не исчезает сама
     const plateOk=document.getElementById('namePlateOk');
     if(plateOk)plateOk.addEventListener('click',acceptBoarding);
+    // крестик на голосовании: убрать плашку раньше времени (решение всё равно состоится)
+    const vcClose=document.getElementById('vcClose');
+    if(vcClose)vcClose.addEventListener('click',()=>{hideVoteCard()});
     if(who)who.addEventListener('click',()=>{
         if(!userName)return;
         pendingName='';nameChecking=false;
@@ -6108,5 +6114,6 @@ window.__panelReady=1;
 </script>
 </body>
 </html>
+
 
 
