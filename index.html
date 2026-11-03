@@ -181,6 +181,11 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .name-plate.ok .name-plate-t{color:#7ef0a0}
 .name-plate.ok .name-plate-lead{color:rgba(225,255,235,0.95)}
 .name-plate.ok .name-plate-note{color:rgba(126,240,160,0.9)}
+/* во время сверки плашка пульсирует: видно, что идёт запрос, нажимать нечего */
+.name-plate.checking{border-color:rgba(255,204,102,0.75);animation:platePulse 1.15s ease-in-out infinite}
+@keyframes platePulse{0%,100%{box-shadow:0 0 26px rgba(0,0,0,0.6),0 0 4px rgba(255,204,102,0.10)}50%{box-shadow:0 0 26px rgba(0,0,0,0.6),0 0 20px rgba(255,204,102,0.42)}}
+.name-plate.checking .name-plate-t{animation:plateBlink 1.15s ease-in-out infinite}
+@keyframes plateBlink{0%,100%{opacity:1}50%{opacity:0.55}}
 .name-plate-ok{width:100%;background:rgba(110,240,160,0.16);border:1px solid rgba(110,240,160,0.55);color:#8df3ae;font-family:'Orbitron',sans-serif;font-size:9.5px;font-weight:700;letter-spacing:1.2px;padding:6px 8px;border-radius:2px;cursor:pointer;pointer-events:auto}
 .name-plate-ok:hover{background:rgba(110,240,160,0.26)}
 .name-plate-ok.hidden{display:none}
@@ -372,7 +377,7 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
                     <button id="nameOk" type="button">ВОЙТИ</button>
                 </div>
                 <span class="name-plate-note" id="namePlateNote">представься — сверю с судовой ролью</span>
-                <button type="button" class="name-plate-ok hidden" id="namePlateOk">ВОЙТИ В ЭФИР</button>
+                <button type="button" class="name-plate-ok hidden" id="namePlateOk">ЗАНЯТЬ МЕСТО В ЭФИРЕ</button>
             </div>
         </div>
         <div class="chat-input" id="chatInputRow">
@@ -5152,20 +5157,21 @@ function namePlateState(mode,name){
     const okBtn=document.getElementById('namePlateOk');
     ovl.classList.toggle('busy',mode!=='ask');
     ovl.classList.toggle('ok',mode==='ok');
+    ovl.classList.toggle('checking',mode==='check');
     if(okBtn)okBtn.classList.toggle('hidden',mode!=='ok');
     if(mode==='ask'){
         pendingName='';
-        if(t)t.textContent='ЗАКРЫТЫЙ ЭФИР КОМАНДЫ';
-        if(lead)lead.textContent='«Меридиан» на связи. В эфир пишут только члены экипажа — назови себя, сверю с судовой ролью.';
-        if(note)note.textContent='представься — сверю с судовой ролью';
+        if(t)t.textContent='ВНУТРЕННИЙ КАНАЛ ЭКИПАЖА';
+        if(lead)lead.textContent='«Меридиан» на связи. Канал закрытый, служебный — назови себя, сверю с судовой ролью.';
+        if(note)note.textContent='назовись, и я найду тебя в списке экипажа';
     }else if(mode==='check'){
-        if(t)t.textContent='СВЕРКА С БАЗОЙ КОРАБЛЯ';
-        if(lead)lead.textContent='Запрашиваю судовую роль «Меридиана», ищу: '+String(name||'').toUpperCase();
-        if(note)note.textContent='доступ к эфиру откроется после сверки';
+        if(t)t.textContent='СВЕРКА ПО СУДОВОЙ РОЛИ';
+        if(lead)lead.textContent='Сличаю имя с судовой ролью «Меридиана»: '+String(name||'').toUpperCase();
+        if(note)note.textContent='секунду, канал пока закрыт';
     }else if(mode==='ok'){
-        if(t)t.textContent='ДОСТУП РАЗРЕШЁН';
-        if(lead)lead.textContent=String(name||'')+' — числится в судовой роли «Меридиана», эфир для него открыт.';
-        if(note)note.textContent='нажми кнопку, чтобы войти в эфир — сообщение будет ждать';
+        if(t)t.textContent='ДОПУСК К КАНАЛУ ОТКРЫТ';
+        if(lead)lead.textContent=String(name||'')+' — в судовой роли. Внутренний канал открыт, писать в эфир можно.';
+        if(note)note.textContent='судовая роль сходится: койка, вахта и место в эфире — твои';
     }
 }
 
