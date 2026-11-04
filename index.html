@@ -3530,6 +3530,7 @@ function advanceShip(){
                 const _bs=lfBondStory();
                 if(_bs)addJournal('БИО-ГРУЗ: '+_bs,'good');
                 crewReact('depart');
+                scheduleTransitEvent();
                 // при отстыковке внешние участники уходят из канала, пассажиры входят
                 guestsLeaveAll();
                 passengerList.forEach(p=>{if(p.alien===undefined)p.alien=Math.random()<0.22;});
@@ -3648,6 +3649,7 @@ function advanceShip(){
                 addJournal('СТЫКОВКА: шлюз '+currentStation+', захваты зафиксированы');
                 showBanner('СТЫКОВКА ЗАВЕРШЕНА','cyan',4000);
                 crewReact('dock');
+                setTimeout(()=>{runStageEvent('dock')},7000+Math.random()*9000);
                 // пассажиры высажены — уходят из канала; на станции в канал входит диспетчер
                 paxActors().forEach(p=>guestLeave(p.who));
                 guestEnter('DPH');
@@ -5437,6 +5439,56 @@ function makeMissionOffers(){
     missionOffers=offers.slice(0,3);
     return missionOffers;
 }
+// ---- канва рейса: этапы и случайные осложнения на каждом ----
+// Никаких фиксированных фраз: на этапе может случиться разное или ничего.
+const STAGE_EVENTS={
+    loading:[
+        {id:'manifest',w:3,d:'приёмщик нашёл расхождение в манифесте — погрузка встала на сверку',fx:()=>{transitProgress=Math.max(0,transitProgress-2)}},
+        {id:'dented',w:2,d:'один контейнер помяли при погрузке — приняли с отметкой',fx:()=>{hullPct=Math.max(10,hullPct-1);updateStateBars()}},
+        {id:'extra',w:2,d:'грузовик привёз лишний контейнер без документов — пристроили за долю',fx:()=>{credits+=900+Math.floor(Math.random()*1500);updateCredits()}},
+        {id:'late',w:2,d:'погрузка задержалась: бригада ждала кран из соседнего дока',fx:()=>{}},
+        {id:'paxdoc',w:2,d:'у пассажира не сошлись документы — оформление затянулось',fx:()=>{}}
+    ],
+    transit:[
+        {id:'debris',w:3,d:'на трассе зацепили мелкий обломок — обшивка получила вмятину',fx:()=>{hullPct=Math.max(10,hullPct-2);updateStateBars()}},
+        {id:'cargoShift',w:2,d:'груз сместился на манёвре — крепления перетянули заново',fx:()=>{}},
+        {id:'pirate',w:1,d:'на радаре чужой борт без опознавания — прошли на повышенной',fx:()=>{shieldPct=Math.max(0,shieldPct-6);updateStateBars()}},
+        {id:'drift',w:2,d:'поймали дрейфующий контейнер без владельца — взяли на буксир',fx:()=>{credits+=1200+Math.floor(Math.random()*1800);updateCredits()}},
+        {id:'leak',w:1,d:'в грузовом отсеке пахнет охладителем — утечку нашли и зажали',fx:()=>{reactorPct=Math.max(10,reactorPct-3);updateStateBars()}},
+        {id:'nopop',w:3,d:'',fx:()=>{}}
+    ],
+    dock:[
+        {id:'queue',w:3,d:'у причала очередь — ждали свободный пирс дольше обычного',fx:()=>{}},
+        {id:'customs',w:2,d:'таможня развернула груз лицом к сканеру — досмотр затянулся',fx:()=>{}},
+        {id:'claim',w:2,d:'приёмщик нашёл царапину на таре — спор по акту',fx:()=>{credits=Math.max(0,credits-700);updateCredits()}},
+        {id:'tip',w:1,d:'приёмщик оказался из старых знакомых — провели без очереди',fx:()=>{credits+=800;updateCredits()}},
+        {id:'nopop',w:3,d:'',fx:()=>{}}
+    ]
+};
+function runStageEvent(phase){
+    const pool=(STAGE_EVENTS[phase]||[]).slice();
+    if(!pool.length)return null;
+    let sum=0;pool.forEach(e=>sum+=e.w);
+    let r=Math.random()*sum,pick=pool[pool.length-1];
+    for(const e of pool){r-=e.w;if(r<=0){pick=e;break}}
+    if(!pick||!pick.d)return null;
+    try{pick.fx&&pick.fx()}catch(e){}
+    addJournal('РЕЙС: '+pick.d, pick.id==='pirate'||pick.id==='claim'?'bad':'');
+    try{aiMoment(pick.d+' — короткая реплика команды по факту')}catch(e){}
+    return pick.id;
+}
+// следующее осложнение на этапе «в пути» — со случайным интервалом
+let stageTimer=0;
+function scheduleTransitEvent(){
+    if(stageTimer)clearTimeout(stageTimer);
+    const wait=45000+Math.random()*75000;
+    stageTimer=setTimeout(()=>{
+        if(state===ShipState.TRANSIT||state===ShipState.HYPERSPACE){
+            if(Math.random()<0.55)runStageEvent('transit');
+        }
+        scheduleTransitEvent();
+    },wait);
+}
 function openDecision(kind){
     if(pendingDecision)return;
     const spec=decisionSpec(kind);
@@ -5610,10 +5662,7 @@ function resolveDecision(){
             addJournal('КОНТРАКТ: отклонили — '+lab+' (решение команды)','bad');
             showBanner('ОТКАЗ ОТ КОНТРАКТА','red',4500);
             setTimeout(()=>aiMoment('команда отказалась от контракта, идём порожняком'),700);
-            setTimeout(()=>{
-                addJournal('БИРЖА: брокер обещал новое окно — следующее предложение будет в порту');
-                aiMoment('отказ обсудили, что делаем дальше — короткая реплика команды');
-            },26000);
+            setTimeout(()=>{runStageEvent('dock')},22000+Math.random()*15000);
         }else{
             let chosen=null;
             const mm=/^offer(\d+)$/.exec(String(winner||''));
@@ -5625,12 +5674,12 @@ function resolveDecision(){
             addJournal('КОНТРАКТ: приняли — '+(chosen?chosen.label:lab)+' (решение команды)','good');
             showBanner('КОНТРАКТ ПРИНЯТ','cyan',4000);
             setTimeout(()=>aiMoment('команда взяла контракт, грузимся и выходим, пока окно открыто'),700);
+            setTimeout(()=>{runStageEvent('loading')},9000+Math.random()*11000);
             const destNow=(currentMission&&currentMission.dest)||'станцию';
-            setTimeout(()=>{addJournal('ПОГРУЗКА: груз идёт на борт, приёмщик сверяет манифест')},14000);
             setTimeout(()=>{
-                addJournal('ПОГРУЗКА: завершена, люки закрыты — курс на '+destNow,'good');
-                aiMoment('погрузка закрыта, выходим по расписанию — короткая реплика команды');
-            },32000);
+                addJournal('ПОГРУЗКА: люки закрыты, манифест подписан — выходим на '+destNow,'good');
+                scheduleTransitEvent();
+            },30000+Math.random()*10000);
         }
         missionOffers=[];
     }else if(d.kind==='fuel'){
@@ -5683,20 +5732,14 @@ function resolveDecision(){
             addJournal('ГРУЗ: часть трюма сброшена, масса меньше — уходим легче','bad');
             showBanner('ГРУЗ СБРОШЕН','red',4200);
             setTimeout(()=>aiMoment('сбросили часть груза, корабль идёт легче'),800);
-            setTimeout(()=>{
-                const fine=Math.round(((currentMission&&currentMission.reward)||0)*0.25);
-                if(fine>0){credits=Math.max(0,credits-fine);try{updateCredits()}catch(e){}
-                    addJournal('ЗАКАЗЧИК: недогруз по манифесту — удержано '+fmt(fine)+' КР','bad');
-                }else addJournal('ГРУЗ: недогруз записан в журнал — заказчик получит объяснение в порту','bad');
-                aiMoment('заказчик узнал о недогрузе, разговор будет в порту — короткая реплика');
-            },30000);
+            setTimeout(()=>{runStageEvent('dock')},26000+Math.random()*14000);
         }else{
             hullPct=Math.max(10,hullPct-5);
             updateStateBars();
             addJournal('ГРУЗ: держим всё — корпус получил лишнее','bad');
             showBanner('ИДЁМ С ГРУЗОМ','cyan',3800);
             setTimeout(()=>aiMoment('удержали груз, корпус получил лишнюю нагрузку'),800);
-            setTimeout(()=>{addJournal('КОРПУС: обшивка держит, но трещины придётся заваривать в порту')},28000);
+            setTimeout(()=>{runStageEvent('transit')},24000+Math.random()*16000);
         }
     }else if(d.kind==='upgrade'){
         if(winner==='engines'){
@@ -5712,7 +5755,7 @@ function resolveDecision(){
             showBanner('ЩИТЫ: УРОВЕНЬ '+shieldLevel,'cyan',4000);
         }
         updateStateBars();updateCredits();
-        setTimeout(()=>{addJournal('ДОРАБОТКА: установка завершена, проверка на стенде прошла — система в работе')},22000);
+        setTimeout(()=>{runStageEvent('transit')},26000+Math.random()*12000);
     }else if(d.kind==='contact'){
         if(winner==='ally'){
             const gain=3500+Math.floor(Math.random()*4500);
@@ -5720,11 +5763,10 @@ function resolveDecision(){
             addJournal('КОНТАКТ: вышли на связь, обменялись данными и грузом — +'+fmt(gain)+' КР','money');
             showBanner('КОНТАКТ УСТАНОВЛЕН','gold',4000);
             updateCredits();
-            setTimeout(()=>{addJournal('КОНТАКТ: обмен подтверждён — обещали деталь в следующий заход в этот сектор')},30000);
+            setTimeout(()=>{runStageEvent('transit')},28000+Math.random()*14000);
         }else{
             addJournal('КОНТАКТ: остались незаметными, чужой борт прошёл мимо','good');
             showBanner('ПРОШЛИ ТИХО','cyan',3500);
-            setTimeout(()=>{addJournal('КОНТАКТ: чужой борт ушёл из сектора, канал закрыт без обмена')},26000);
         }
     }else{
         routeMode=winner;
@@ -5736,10 +5778,7 @@ function resolveDecision(){
             showBanner('КУРС: В ОБХОД','cyan',4200);
         }
         setTimeout(()=>aiMoment(winner==='direct'?'идём напрямую через опасный сектор':'идём в обход, теряем время, зато целее корпус'),700);
-        setTimeout(()=>{
-            addJournal(winner==='direct'?'МАРШРУТ: идём прямым курсом, сектор держим на радаре':'МАРШРУТ: обходим сектор, курс длиннее, но спокойнее');
-            aiMoment(winner==='direct'?'прямой курс через опасный сектор, что видно на радаре — короткая реплика':'обход даёт время, но топливо уходит — короткая реплика');
-        },24000);
+        scheduleTransitEvent();
     }
     if(d.vote&&userName){
         setTimeout(()=>crewSay('KEP',`${userName}, твой голос услышан — и он был не лишним.`,false,{urgent:true}),2400);
