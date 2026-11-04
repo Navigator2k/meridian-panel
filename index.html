@@ -5308,7 +5308,6 @@ function voteResultsHTML(d,votes,winner){
         const line=labOf(r.id)+' ('+r.n+') — '+r.names.join(', ');
         return (r.id===winner)?('<b>'+line+'</b>'):line;
     });
-    if(!(d&&d.vote)&&userName)lines.push('<i>'+userName+' — воздержался</i>');
     lines.push('<span class="vc-final">Итог: <b>'+labOf(winner)+'</b></span>');
     return lines.join('<br>');
 }
@@ -5399,8 +5398,8 @@ function snapshotOfferState(){
 function restoreOfferState(s){
     cargoList=s.cargo;passengerList=s.pax;currentMission=s.mission;regionGlow=s.region;
 }
-function applyOffer(idx){
-    const o=missionOffers[idx];
+function applyOffer(idx,list){
+    const o=(list||missionOffers)[idx];
     if(!o)return false;
     cargoList=JSON.parse(JSON.stringify(o.cargo||[]));
     passengerList=JSON.parse(JSON.stringify(o.pax||[]));
@@ -5460,7 +5459,7 @@ function openDecision(kind){
     const q=spec.ask[Math.floor(Math.random()*spec.ask.length)];
     // голосуют все: у каждого есть носимый коммуникатор, даже если человек занят на корабле
     const busy=[];
-    pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+20000};
+    pendingDecision={kind,options,stances,busy,vote:null,deadline:Date.now()+20000,offers:missionOffers.slice()};
     chatHeat(90000);
     // кто выскажется — от двух человек до всех, кто на связи
     const pool=['KEP','ZAR','LUS','FIN','NUR'].filter(w=>onDuty.indexOf(w)>=0&&w!=='KEP');
@@ -5611,16 +5610,27 @@ function resolveDecision(){
             addJournal('КОНТРАКТ: отклонили — '+lab+' (решение команды)','bad');
             showBanner('ОТКАЗ ОТ КОНТРАКТА','red',4500);
             setTimeout(()=>aiMoment('команда отказалась от контракта, идём порожняком'),700);
+            setTimeout(()=>{
+                addJournal('БИРЖА: брокер обещал новое окно — следующее предложение будет в порту');
+                aiMoment('отказ обсудили, что делаем дальше — короткая реплика команды');
+            },26000);
         }else{
             let chosen=null;
             const mm=/^offer(\d+)$/.exec(String(winner||''));
-            if(mm&&missionOffers.length){
+            const offerList=(d.offers&&d.offers.length)?d.offers:missionOffers;
+            if(mm&&offerList.length){
                 const idx=parseInt(mm[1],10);
-                if(applyOffer(idx))chosen=missionOffers[idx];
+                if(applyOffer(idx,offerList))chosen=offerList[idx];
             }
             addJournal('КОНТРАКТ: приняли — '+(chosen?chosen.label:lab)+' (решение команды)','good');
             showBanner('КОНТРАКТ ПРИНЯТ','cyan',4000);
             setTimeout(()=>aiMoment('команда взяла контракт, грузимся и выходим, пока окно открыто'),700);
+            const destNow=(currentMission&&currentMission.dest)||'станцию';
+            setTimeout(()=>{addJournal('ПОГРУЗКА: груз идёт на борт, приёмщик сверяет манифест')},14000);
+            setTimeout(()=>{
+                addJournal('ПОГРУЗКА: завершена, люки закрыты — курс на '+destNow,'good');
+                aiMoment('погрузка закрыта, выходим по расписанию — короткая реплика команды');
+            },32000);
         }
         missionOffers=[];
     }else if(d.kind==='fuel'){
@@ -5673,12 +5683,20 @@ function resolveDecision(){
             addJournal('ГРУЗ: часть трюма сброшена, масса меньше — уходим легче','bad');
             showBanner('ГРУЗ СБРОШЕН','red',4200);
             setTimeout(()=>aiMoment('сбросили часть груза, корабль идёт легче'),800);
+            setTimeout(()=>{
+                const fine=Math.round(((currentMission&&currentMission.reward)||0)*0.25);
+                if(fine>0){credits=Math.max(0,credits-fine);try{updateCredits()}catch(e){}
+                    addJournal('ЗАКАЗЧИК: недогруз по манифесту — удержано '+fmt(fine)+' КР','bad');
+                }else addJournal('ГРУЗ: недогруз записан в журнал — заказчик получит объяснение в порту','bad');
+                aiMoment('заказчик узнал о недогрузе, разговор будет в порту — короткая реплика');
+            },30000);
         }else{
             hullPct=Math.max(10,hullPct-5);
             updateStateBars();
             addJournal('ГРУЗ: держим всё — корпус получил лишнее','bad');
             showBanner('ИДЁМ С ГРУЗОМ','cyan',3800);
             setTimeout(()=>aiMoment('удержали груз, корпус получил лишнюю нагрузку'),800);
+            setTimeout(()=>{addJournal('КОРПУС: обшивка держит, но трещины придётся заваривать в порту')},28000);
         }
     }else if(d.kind==='upgrade'){
         if(winner==='engines'){
@@ -5694,6 +5712,7 @@ function resolveDecision(){
             showBanner('ЩИТЫ: УРОВЕНЬ '+shieldLevel,'cyan',4000);
         }
         updateStateBars();updateCredits();
+        setTimeout(()=>{addJournal('ДОРАБОТКА: установка завершена, проверка на стенде прошла — система в работе')},22000);
     }else if(d.kind==='contact'){
         if(winner==='ally'){
             const gain=3500+Math.floor(Math.random()*4500);
@@ -5701,9 +5720,11 @@ function resolveDecision(){
             addJournal('КОНТАКТ: вышли на связь, обменялись данными и грузом — +'+fmt(gain)+' КР','money');
             showBanner('КОНТАКТ УСТАНОВЛЕН','gold',4000);
             updateCredits();
+            setTimeout(()=>{addJournal('КОНТАКТ: обмен подтверждён — обещали деталь в следующий заход в этот сектор')},30000);
         }else{
             addJournal('КОНТАКТ: остались незаметными, чужой борт прошёл мимо','good');
             showBanner('ПРОШЛИ ТИХО','cyan',3500);
+            setTimeout(()=>{addJournal('КОНТАКТ: чужой борт ушёл из сектора, канал закрыт без обмена')},26000);
         }
     }else{
         routeMode=winner;
@@ -5715,6 +5736,10 @@ function resolveDecision(){
             showBanner('КУРС: В ОБХОД','cyan',4200);
         }
         setTimeout(()=>aiMoment(winner==='direct'?'идём напрямую через опасный сектор':'идём в обход, теряем время, зато целее корпус'),700);
+        setTimeout(()=>{
+            addJournal(winner==='direct'?'МАРШРУТ: идём прямым курсом, сектор держим на радаре':'МАРШРУТ: обходим сектор, курс длиннее, но спокойнее');
+            aiMoment(winner==='direct'?'прямой курс через опасный сектор, что видно на радаре — короткая реплика':'обход даёт время, но топливо уходит — короткая реплика');
+        },24000);
     }
     if(d.vote&&userName){
         setTimeout(()=>crewSay('KEP',`${userName}, твой голос услышан — и он был не лишним.`,false,{urgent:true}),2400);
