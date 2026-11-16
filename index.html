@@ -5284,7 +5284,7 @@ function showVoteCard(q,options,details){
         options.forEach(o=>{
             const b=document.createElement('button');
             b.type='button';b.className='vc-btn';b.setAttribute('data-id',o.id);
-            b.textContent=o.label;
+            b.textContent=(String(o.label).length>34)?(String(o.label).slice(0,32).replace(/[\s,;:—–-]+$/,'')+'…'):o.label;
             b.addEventListener('click',()=>votePick(o.id));
             oEl.appendChild(b);
         });
@@ -5360,44 +5360,39 @@ function showVoteResults(d,votes,winner){
 // подробности к вопросу: чтобы было понятно, за что голосуем
 function voteDetails(kind){
     const riskWord=r=>['низкий','средний','высокий','очень высокий','крайний'][Math.max(0,Math.min(4,(r||2)-1))];
+    // короткая подпись: чтобы прочитать одним взглядом
+    const shortLabel=s=>{
+        s=String(s||'');
+        if(s.length<=30)return s;
+        const cut=s.slice(0,30);
+        return cut.replace(/[\s,;:—–-]+$/,'')+'…';
+    };
     if(kind==='cargo'){
         if(missionOffers.length>1){
-            const riskWord2=r=>['низкий','средний','высокий','очень высокий','крайний'][Math.max(0,Math.min(4,(r||2)-1))];
             return missionOffers.map((o,i)=>{
-                const rows=[];
-                rows.push('<b>'+(i+1)+'. '+o.label+'</b>');
-                if(o.client)rows.push('   заказчик: '+o.client);
-                if(o.desc&&o.desc!==o.label)rows.push('   '+o.desc.slice(0,150));
-                if(o.task&&o.task!==o.label&&o.task!==o.desc)rows.push('   '+o.task);
-                rows.push('   награда: '+fmt(o.reward||0)+' КР · риск: '+riskWord2(o.risk)+(o.dist?(' · плечо: '+o.dist+' св.лет'):''));
-                return rows.join('\n');
-            }).join('\n\n');
+                return '<b>'+(i+1)+'. '+shortLabel(o.label)+'</b><br>'+fmt(o.reward||0)+' КР · риск: '+riskWord(o.risk)+(o.dist?(' · '+o.dist+' св.лет'):'');
+            }).join('<br><br>');
         }
         const m=currentMission||{};
         if(!m||!m.label)return 'Контракт ещё не выбран';
         const rows=[];
-        rows.push('<b>Заказчик:</b> '+(m.client||'—'));
-        if(m.desc)rows.push('<b>Суть:</b> '+m.desc);
-        if(m.task&&m.task!==m.label)rows.push('<b>Задача:</b> '+m.task);
-        if(m.dest)rows.push('<b>Пункт:</b> '+m.dest);
-        if(m.cargo&&m.cargo.name)rows.push('<b>Груз:</b> '+m.cargo.name+(m.cargo.t?(' · '+m.cargo.t+' т'):''));
-        if(m.passenger&&m.passenger.n)rows.push('<b>Пассажиры:</b> '+m.passenger.n);
-        rows.push('<b>Награда:</b> '+fmt(m.reward||0)+' КР'+(m.bonus?(' (бонус: '+m.bonus.cond+', +'+Math.round((m.bonus.pct||0)*100)+'%)'):''));
-        if(m.risk)rows.push('<b>Риск:</b> '+riskWord(m.risk));
-        if(m.dist)rows.push('<b>Плечо:</b> '+m.dist+' св.лет');
-        return rows.join('\n');
+        rows.push('<b>'+shortLabel(m.label)+'</b>');
+        rows.push(fmt(m.reward||0)+' КР · риск: '+riskWord(m.risk||2)+(m.dist?(' · '+m.dist+' св.лет'):''));
+        if(m.cargo&&m.cargo.name)rows.push('груз: '+m.cargo.name+(m.cargo.t?(' · '+m.cargo.t+' т'):''));
+        if(m.passenger&&m.passenger.n)rows.push('пассажиров: '+m.passenger.n);
+        return rows.join('<br>');
     }
     if(kind==='jettison'){
         const n=(cargoList||[]).length;
         const w=(typeof holdWeight==='function')?holdWeight():0;
-        return '<b>В трюме:</b> '+n+' поз. · '+w+' т\n<b>Доставка:</b> '+((currentMission&&currentMission.dest)||'—')+'\n<b>Сброс:</b> корпус легче, но груз и часть оплаты теряем';
+        return 'В трюме: '+n+' поз. · '+w+' т<br>Сброс: легче корпус, но теряем груз и часть оплаты';
     }
     if(kind==='rescue'){
-        return '<b>Сигнал бедствия</b> в двух часах хода\n<b>Наше состояние:</b> топливо '+Math.round(fuelPct)+'%, корпус '+Math.round(hullPct)+'%\n<b>Цена помощи:</b> отклонение от курса, задержка рейса';
+        return 'Сигнал бедствия в двух часах хода<br>Топливо '+Math.round(fuelPct)+'% · корпус '+Math.round(hullPct)+'%<br>Помощь: отклонение и задержка рейса';
     }
     if(kind==='route'){
         const d=(typeof legDist!=='undefined')?legDist.toFixed(1):'—';
-        return '<b>Плечо:</b> '+d+' св.лет\n<b>Напрямую:</b> ближе, но риск боевого контакта выше\n<b>Обход:</b> дольше и дороже по топливу, зато корпус целее';
+        return 'Плечо '+d+' св.лет<br>Напрямую: ближе, риск боя выше<br>Обход: дольше и дороже, корпус целее';
     }
     if(kind==='contact'){
         return '<b>Рядом чужой борт</b> без опознавания\n<b>Контакт:</b> сведения, работа, иногда помощь\n<b>Риск:</b> намерения неизвестны';
