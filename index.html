@@ -3517,7 +3517,14 @@ function advanceShip(){
                 if(passengerList.length){crewReact('passenger')}
                 if(cargoList.length){react('cargoLoad')}
                 // капитан ставит вопрос не каждый раз: выборов должно быть немного
-                if(Math.random()<0.65)openDecision('cargo');
+                if(Math.random()<0.65){
+                    openDecision('cargo');
+                    // голосование редкое: если время не пришло — капитан решает сам
+                    if(!pendingDecision&&missionOffers.length){
+                        applyOffer(0);
+                        addJournal('КОНТРАКТ: капитан выбрал сам — '+((currentMission&&currentMission.label)||''),'good');
+                    }
+                }
                 else if(credits>30000&&Math.random()<0.5)openDecision('upgrade');
             }
             if(stateTimer>7&&!pendingDecision){
@@ -5239,6 +5246,28 @@ function decisionSpec(kind){
             ]
         };
     }
+    if(kind==='sideEvent'){
+        return {
+            options:[{id:'investigate',label:'отклониться'},{id:'skip',label:'пройти мимо'}],
+            stances:{KEP:(fuelPct>40)?'investigate':'skip',ZAR:(fuelPct<50||legDist>2.5)?'skip':'investigate',LUS:'investigate',FIN:'investigate',NUR:(hullPct<70)?'skip':'investigate'},
+            ask:[
+                'Сбоку от трассы сигнал. Сворачиваем или идём дальше?',
+                'Там что-то происходит. Проверим или пройдём?',
+                'Отклонение стоит времени. Решаем: идём или нет?'
+            ]
+        };
+    }
+    if(kind==='salvage'){
+        return {
+            options:[{id:'grab',label:'подобрать'},{id:'leave',label:'оставить'}],
+            stances:{KEP:'grab',ZAR:(holdFillPct()>85)?'leave':'grab',LUS:'grab',FIN:'grab',NUR:'grab'},
+            ask:[
+                'За бортом дрейфует объект. Подбираем?',
+                'Контейнер без опознавания. Брать или мимо?',
+                'Нашлась брошенная тара. Забираем?'
+            ]
+        };
+    }
     // route
     return {
         options:[{id:'direct',label:'напрямую'},{id:'detour',label:'в обход'}],
@@ -5259,6 +5288,8 @@ function pickTransitDecision(){
     if(passengerList.length)pool.push('rescue');
     if(Math.random()<0.35)pool.push('contact');
     if(Math.random()<0.25)pool.push('rescue');
+    if(Math.random()<0.40)pool.push('sideEvent');
+    if(Math.random()<0.30)pool.push('salvage');
     return pool[Math.floor(Math.random()*pool.length)];
 }
 
@@ -5504,6 +5535,8 @@ function runStageEvent(phase){
     try{pick.fx&&pick.fx()}catch(e){}
     addJournal('РЕЙС: '+pick.d, pick.id==='pirate'||pick.id==='claim'?'bad':'');
     try{aiMoment(pick.d+' — короткая реплика команды по факту')}catch(e){}
+    // находка за бортом — повод решить: подбирать или нет (голосование редкое)
+    if(pick.id==='drift'){try{setTimeout(()=>openDecision('salvage'),1800)}catch(e){}}
     return pick.id;
 }
 // следующее осложнение на этапе «в пути» — со случайным интервалом
@@ -5518,8 +5551,37 @@ function scheduleTransitEvent(){
         scheduleTransitEvent();
     },wait);
 }
+// доля решений, которые капитан принимает сам, без голосования
+function captainSelfRate(kind){
+    if(kind==='cargo')return 0.70;
+    if(kind==='upgrade')return 0.70;
+    if(kind==='route')return 0.60;
+    if(kind==='sideEvent')return 0.60;
+    if(kind==='contact')return 0.60;
+    if(kind==='salvage')return 0.55;
+    if(kind==='jettison')return 0.55;
+    if(kind==='rescue')return 0.50;
+    return 0.60;
+}
+// капитан решает сам: без карточки, без голосования, с записью в журнал
+function captainDecides(kind){
+    let spec=null;
+    try{spec=decisionSpec(kind)}catch(e){}
+    if(!spec||!spec.options||!spec.options.length)return false;
+    const winner=spec.stances.KEP||spec.options[0].id;
+    pendingDecision={kind:kind,options:spec.options,stances:spec.stances,vote:null,busy:[],offers:missionOffers.slice(),silent:true};
+    try{resolveDecision()}catch(e){pendingDecision=null;return false}
+    return true;
+}
+// голосования редкие: не чаще раза в 5-10 минут, разброс случайный
+let voteCooldownUntil=0;
+function voteAllowed(){return Date.now()>=voteCooldownUntil}
+function setVoteCooldown(){voteCooldownUntil=Date.now()+Math.round((5+Math.random()*5)*60000)}
 function openDecision(kind){
     if(pendingDecision)return;
+    // сначала: капитан может решить сам — и это обычный случай, а не исключение
+    if(Math.random()<captainSelfRate(kind)){captainDecides(kind);return}
+    if(!voteAllowed()){captainDecides(kind);return}
     const spec=decisionSpec(kind);
     const options=spec.options;
     const stances=Object.assign({},spec.stances);
@@ -5682,13 +5744,13 @@ function resolveDecision(){
     let winner=best,how='по голосам';
     if(tie){winner=d.stances.KEP;how='голос капитана при равенстве'}
     const lab=(d.options.find(o=>o.id===winner)||{}).label||winner;
-    try{showVoteResults(d,votes,winner)}catch(e){}
+    if(!d.silent)try{showVoteResults(d,votes,winner)}catch(e){}
     if(d.kind==='cargo'){
         if(winner==='skip'){
             cargoList=[];passengerList=[];
             currentMission={type:'IDLE',label:'ПЕРЕХОД ПОРОЖНЯКОМ',dest:(currentMission&&currentMission.dest)||stations[0],reward:0,task:'Свободный переход без контракта'};
             updateHold();updateMissionPanel();
-            addJournal('КОНТРАКТ: отклонили — '+lab+' (решение команды)','bad');
+            addJournal('КОНТРАКТ: отклонили — '+lab+(d.silent?' (решение капитана)':' (решение команды)'),'bad');
             showBanner('ОТКАЗ ОТ КОНТРАКТА','red',4500);
             setTimeout(()=>aiMoment('команда отказалась от контракта, идём порожняком'),700);
             setTimeout(()=>{runStageEvent('dock')},22000+Math.random()*15000);
@@ -5700,7 +5762,7 @@ function resolveDecision(){
                 const idx=parseInt(mm[1],10);
                 if(applyOffer(idx,offerList))chosen=offerList[idx];
             }
-            addJournal('КОНТРАКТ: приняли — '+(chosen?chosen.label:lab)+' (решение команды)','good');
+            addJournal('КОНТРАКТ: приняли — '+(chosen?chosen.label:lab)+(d.silent?' (решение капитана)':' (решение команды)'),'good');
             showBanner('КОНТРАКТ ПРИНЯТ','cyan',4000);
             setTimeout(()=>aiMoment('команда взяла контракт, грузимся и выходим, пока окно открыто'),700);
             setTimeout(()=>{runStageEvent('loading')},9000+Math.random()*11000);
@@ -5797,6 +5859,34 @@ function resolveDecision(){
             addJournal('КОНТАКТ: остались незаметными, чужой борт прошёл мимо','good');
             showBanner('ПРОШЛИ ТИХО','cyan',3500);
         }
+    }else if(d.kind==='sideEvent'){
+        if(winner==='investigate'){
+            transitProgress=Math.max(0,transitProgress-4);
+            const roll=Math.random();
+            if(roll<0.55){
+                const gain=2500+Math.floor(Math.random()*5500);
+                credits+=gain;updateCredits();
+                addJournal('ПОБОЧНОЕ: отклонились на сигнал и нашли работу — +'+fmt(gain)+' КР','money');
+                aiMoment('отклонились на сигнал и нашли работу — короткая реплика команды');
+            }else{
+                hullPct=Math.max(10,hullPct-4);updateStateBars();
+                addJournal('ПОБОЧНОЕ: отклонились зря — на месте был мусор, зацепили обломок','bad');
+                aiMoment('отклонились зря и зацепили обломок — короткая реплика команды');
+            }
+        }else{
+            addJournal('ПОБОЧНОЕ: прошли мимо сигнала — курс и график не меняем','good');
+            aiMoment('прошли мимо сигнала, идём по графику — короткая реплика');
+        }
+    }else if(d.kind==='salvage'){
+        if(winner==='grab'){
+            cargoList.push({name:'бесхозный контейнер',cls:'crate',weight:6+Math.floor(Math.random()*10),dest:(currentMission&&currentMission.dest)||stations[0]});
+            updateHold();updateMissionPanel();
+            addJournal('НАХОДКА: подобрали контейнер без опознавания — на борт, разберём в порту','good');
+            aiMoment('подобрали контейнер, что внутри — неизвестно — короткая реплика');
+        }else{
+            addJournal('НАХОДКА: оставили объект за бортом — трюм и график не трогаем','good');
+            aiMoment('прошли мимо находки — короткая реплика');
+        }
     }else{
         routeMode=winner;
         if(winner==='direct'){
@@ -5812,6 +5902,8 @@ function resolveDecision(){
     if(d.vote&&userName){
         setTimeout(()=>crewSay('KEP',`${userName}, твой голос услышан — и он был не лишним.`,false,{urgent:true}),2400);
     }
+    // следующее голосование — не раньше чем через 5-10 минут
+    if(!d.silent)setVoteCooldown();
 }
 
 // ---- входящее сообщение пользователя ----
