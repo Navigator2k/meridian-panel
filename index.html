@@ -993,6 +993,17 @@ function paxName(used){
     const list=pool.length?pool:passengerNames;
     return list[Math.floor(Math.random()*list.length)];
 }
+// старые сохранения хранили «пассажир 1», «пассажир 2» — заменяем на имена
+function normalizePassengerNames(){
+    (passengerList||[]).forEach(p=>{
+        if(!p||typeof p.name!=='string')return;
+        if(/^пассажир\s*\d+$/i.test(p.name.trim())){
+            const pn=paxName((passengerList||[]).map(x=>x&&x.name));
+            p.name=pn[0];
+            if(!p.role||/по контракту/i.test(String(p.role)))p.role=pn[1]+' · по контракту';
+        }
+    });
+}
 const MISSION_ERA={1:[
 {ref:'L1',era:1,cat:'снабжение', station:'металл', client:'Синдикат «Молот-7»', title:'Руда Веста→«Молот-7»', desc:'Прииск на Весте сдаёт смену по алиментам; руда идёт на переработку. Вахта начислит ставку по тонне, лом на выходе — за наш счёт.', cargo:{t:80,name:'никелевая руда'}, reward:3800, bonus:{cond:'до 24 ч',pct:0.3}, dist:1.1, risk:1, news:'опп: вахты по ту сторону льда', journal:'КОНТРАКТ-1147: руда, 3800 КР; приз при условиях', chat:'Порядок, Зара — дорожка на «Молот-7» чистая, у меня там знакомый в приёмке, примут без очереди.', result:{type:'cargo', how:'загружено на Весте, выгружено на «Молот-7», закрыто по манифесту'}},
 {ref:'L2',era:1,cat:'вывоз', station:'металл', client:'Биржевой дом Цереры', title:'Слитки «Молот-7»→Церера', desc:'Переработка сдаёт готовые слитки на биржу; вход — по номеру вахты, день открытых ангаров — удобный повод.', cargo:{t:60,name:'переработанные слитки'}, reward:5200, bonus:{cond:'до 30 ч',pct:0.25}, dist:1.8, risk:2, news:'церера: день открытых ангаров', journal:'КОНТРАКТ-1148: слитки, 5200', chat:'КЕП, слитки с «Молота» — это наш «тихий объём» на неделю. Веду к бирже, пирс уже у знакомого.', result:{type:'cargo', how:'слитки приняли по курсу дня на бирже, пустой трюм опломбирован'}},
@@ -3366,6 +3377,7 @@ function updateMissionPanel(){
 }
 
 function updateHold(){
+    normalizePassengerNames();
     const fl=document.getElementById('holdFill');
     const fill=holdFillPct();
     if(fl.textContent!==fill+'%')fl.textContent=fill+'%';
@@ -6143,6 +6155,7 @@ function restoreGame(s){
     if(s.mission)currentMission=s.mission;
     cargoList=Array.isArray(s.cargo)?s.cargo:[];
     passengerList=Array.isArray(s.pax)?s.pax:[];
+    normalizePassengerNames();
     if(s.currentStation)currentStation=s.currentStation;
     nextStation=s.nextStation||'';
     legDist=num(s.legDist,legDist);
