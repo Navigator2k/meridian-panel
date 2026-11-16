@@ -70,7 +70,8 @@ canvas#mainCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 @keyframes statePulse{0%,100%{opacity:1}50%{opacity:0.7}}
 .ship-state.docked{color:var(--green);border:1px solid var(--green-dim);background:rgba(0,230,118,0.06)}
 .ship-state.transit{color:var(--cyan);border:1px solid var(--cyan-dim);background:rgba(0,229,255,0.06)}
-.ship-state.hyperspace{color:var(--purple);border:1px solid var(--purple-dim);background:rgba(224,64,251,0.06);animation:hsPulse 1s infinite}
+.ship-state.hyperspace{color:var(--purple);border:1px solid var(--purple-dim);background:rgba(224,64,251,0.06);animation:hsPulse 1s infinite,hsBlink 0.75s steps(1,end) infinite}
+@keyframes hsBlink{0%,54%{opacity:1}55%,100%{opacity:0.35}}
 @keyframes hsPulse{0%,100%{box-shadow:0 0 10px var(--purple-dim)}50%{box-shadow:0 0 25px rgba(224,64,251,0.3)}}
 .ship-state.combat{color:var(--red);border:1px solid var(--red-dim);background:rgba(255,23,68,0.09);animation:combatPulse 0.5s infinite}
 @keyframes combatPulse{0%,100%{background:rgba(255,23,68,0.09)}50%{background:rgba(255,23,68,0.22)}}
@@ -931,7 +932,7 @@ const ShipState={
 };
 const SS_LABELS={
     [ShipState.DOCKED]:'ПРИШВАРТОВАН',[ShipState.UNDOCKING]:'ОТСТЫКОВКА',
-    [ShipState.TRANSIT]:'В ПУТИ',[ShipState.HYPERSPACE]:'ГИПЕРПРЫЖОК',
+    [ShipState.TRANSIT]:'В ПУТИ',[ShipState.HYPERSPACE]:'ВАРП',
     [ShipState.APPROACH]:'СЛЕДОВАНИЕ',[ShipState.DOCKING]:'СТЫКОВКА',
     [ShipState.CARGO_OPS]:'ГРУЗ.ОП',[ShipState.COMBAT]:'БОЕВ',
     [ShipState.EMERGENCY]:'АВАРИЯ'
@@ -983,7 +984,15 @@ const missionTypes=[
 ];
 const cargoPool=['Медицинские расходники','Промышленные компоненты','Продовольствие','Топливные кассеты','Научное оборудование','Голомодули','Биоконтейнеры','Оптоволокно','Кристаллы «К-7»','Плазменные ячейки','Стандартные контейнеры','Предметы первой необходимости'];
 const cargoClasses=['standard','perishable','hazmat','valuable'];
-const passengerNames=[['К. Велдт','исследователь'],['М. Стоун','дипломат'],['А. Танака','инженер'],['Л. Марц','журналист'],['П. Икеда','пилот-стажёр'],['С. Хольм','медик'],['Д. Рамирес','торговец'],['О. Новикова','археолог']];
+const passengerNames=[['К. Велдт','исследователь'],['М. Стоун','дипломат'],['А. Танака','инженер'],['Л. Марц','журналист'],['П. Икеда','пилот-стажёр'],['С. Хольм','медик'],['Д. Рамирес','торговец'],['О. Новикова','археолог'],
+['Х. Авасар','геолог'],['Т. Чиба','переговорщик'],['Н. Окада','техник жизнеобеспечения'],['Р. Мендес','судовой агент'],['С. Квон','картограф'],['Д. Абрахам','инженер-криогенщик'],['М. Ковач','врач'],['Э. Соренсен','журналист-фрилансер'],['П. Накамура','пилот-стажёр'],['В. Альварес','снабженец']];
+// имя пассажира из книжного мира: без порядковых номеров
+function paxName(used){
+    const reserved=(used||[]).map(u=>String(u));
+    const pool=passengerNames.filter(p=>reserved.indexOf(p[0])<0);
+    const list=pool.length?pool:passengerNames;
+    return list[Math.floor(Math.random()*list.length)];
+}
 const MISSION_ERA={1:[
 {ref:'L1',era:1,cat:'снабжение', station:'металл', client:'Синдикат «Молот-7»', title:'Руда Веста→«Молот-7»', desc:'Прииск на Весте сдаёт смену по алиментам; руда идёт на переработку. Вахта начислит ставку по тонне, лом на выходе — за наш счёт.', cargo:{t:80,name:'никелевая руда'}, reward:3800, bonus:{cond:'до 24 ч',pct:0.3}, dist:1.1, risk:1, news:'опп: вахты по ту сторону льда', journal:'КОНТРАКТ-1147: руда, 3800 КР; приз при условиях', chat:'Порядок, Зара — дорожка на «Молот-7» чистая, у меня там знакомый в приёмке, примут без очереди.', result:{type:'cargo', how:'загружено на Весте, выгружено на «Молот-7», закрыто по манифесту'}},
 {ref:'L2',era:1,cat:'вывоз', station:'металл', client:'Биржевой дом Цереры', title:'Слитки «Молот-7»→Церера', desc:'Переработка сдаёт готовые слитки на биржу; вход — по номеру вахты, день открытых ангаров — удобный повод.', cargo:{t:60,name:'переработанные слитки'}, reward:5200, bonus:{cond:'до 30 ч',pct:0.25}, dist:1.8, risk:2, news:'церера: день открытых ангаров', journal:'КОНТРАКТ-1148: слитки, 5200', chat:'КЕП, слитки с «Молота» — это наш «тихий объём» на неделю. Веду к бирже, пирс уже у знакомого.', result:{type:'cargo', how:'слитки приняли по курсу дня на бирже, пустой трюм опломбирован'}},
@@ -1190,7 +1199,7 @@ function generateMission(){
                 const _cargoNm=m.cargo?m.cargo.name:'';
                 if(_cargo>0)cargoList.push({name:_cargoNm,cls:_cargo>40?'bulk':'crate',weight:Math.min(200,_cargo),dest});
                 const _pax=m.passenger?m.passenger.n:0;
-                for(let i=0;i<_pax;i++){passengerList.push({name:'пассажир '+(i+1),role:'по контракту:'+m.title,dest,fare:Math.round(m.reward/(_pax||1))})}
+                for(let i=0;i<_pax;i++){const pn=paxName(passengerList.map(p=>p.name));passengerList.push({name:pn[0],role:pn[1]+' · по контракту',dest,fare:Math.round(m.reward/(_pax||1))})}
                 currentMission={type:'CUSTOM',label:m.title,dest:dest,reward:m.reward,task:m.title,ref:m.ref,era:curEra(),main:!!m.main,cameo:m.cameo||null,result:m.result||null,newsOut:m.newsOut||null,
                     risk:m.risk||2,dist:m.dist||0,client:m.client||'',bonus:m.bonus||null,cargo:(m.cargo||null),passenger:(m.passenger||null),desc:m.desc||''};
                 updateHold();updateMissionPanel();
@@ -5467,7 +5476,19 @@ const STAGE_EVENTS={
     ]
 };
 function runStageEvent(phase){
-    const pool=(STAGE_EVENTS[phase]||[]).slice();
+    let pool=(STAGE_EVENTS[phase]||[]).slice();
+    if(!pool.length)return null;
+    // событие должно соответствовать тому, что реально на борту:
+    // нет груза — нет грузовых происшествий; нет пассажиров — нет пассажирских
+    const hasCargo=(typeof cargoList!=='undefined'&&cargoList&&cargoList.length>0);
+    const hasPax=(typeof passengerList!=='undefined'&&passengerList&&passengerList.length>0);
+    const CARGO_IDS=['manifest','dented','extra','survey','cargoShift','leak','claim'];
+    const PAX_IDS=['paxdoc'];
+    pool=pool.filter(e=>{
+        if(CARGO_IDS.indexOf(e.id)>=0)return hasCargo;
+        if(PAX_IDS.indexOf(e.id)>=0)return hasPax;
+        return true;
+    });
     if(!pool.length)return null;
     let sum=0;pool.forEach(e=>sum+=e.w);
     let r=Math.random()*sum,pick=pool[pool.length-1];
