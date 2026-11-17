@@ -5025,7 +5025,9 @@ function smalltalkReply(raw){
 // ---- слой к модели: один и тот же контракт для прокси и локального движка ----
 function scheduleLines(lines,opts){
     const o=opts||{};
-    const arr=(lines||[]).filter(l=>l&&l.who&&l.text).slice(0,o.limit||3);
+    const arr=(lines||[]).filter(l=>l&&l.who&&l.text)
+        .filter(l=>!o.filter||o.filter(l))
+        .slice(0,o.limit||3);
     if(!arr.length)return;
     if(o.rush!==false)chatRush(14000);
     const prio=(o.prio!==false);
@@ -5610,7 +5612,9 @@ function openDecision(kind){
     const order=(pool.length?pool:['ZAR','LUS']).sort(()=>Math.random()-0.5).slice(0,speakers);
     const roster=order.map(who=>({who:who,label:(options.find(o=>o.id===stances[who])||{}).label||''}));
     // вопрос капитана и мнения пишет модель; заготовки — только при обрыве связи
-    const aiSayOpts={base:500,step:1800,jitter:1200,prio:true,limit:6};
+    const aiSayOpts={base:300,step:1200,jitter:700,prio:true,limit:4,
+        // вопрос уже висит карточкой — в чате его не дублируем
+        filter:(l)=>!(l.who==='KEP'&&/\?/.test(String((l&&l.text)||'')))};
     // отдельный вопрос лично игроку — только после вопроса команде
     if(userName&&Math.random()<0.4){
         const direct=[`${userName}, а ты как?`,`${userName}, что скажешь?`,`${userName}, твоё слово?`];
@@ -5623,10 +5627,9 @@ function openDecision(kind){
         roster:roster,
         scene:chatScene()
     },()=>{
-        setTimeout(()=>crewSay('KEP',q,false,{urgent:true}),400);
         order.forEach((who,i)=>{
             const line=(POOL_VOTE[who]||{})[stances[who]]||'';
-            if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),2400+i*(3200+Math.random()*2400));
+            if(line)setTimeout(()=>crewSay(who,fillTemplate(line),false,{urgent:true}),1200+i*(3200+Math.random()*2400));
         });
     },aiSayOpts);
     if(preVote&&preVote.kind===kind&&Date.now()-preVote.t<45000){
@@ -5745,6 +5748,8 @@ function resolveDecision(){
     if(tie){winner=d.stances.KEP;how='голос капитана при равенстве'}
     const lab=(d.options.find(o=>o.id===winner)||{}).label||winner;
     if(!d.silent)try{showVoteResults(d,votes,winner)}catch(e){}
+    // короткий след в ленте: что в итоге решили (без списков и дублей карточки)
+    if(!d.silent)try{chatSys('РЕШЕНИЕ: '+lab)}catch(e){}
     if(d.kind==='cargo'){
         if(winner==='skip'){
             cargoList=[];passengerList=[];
